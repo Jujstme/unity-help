@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32421.90
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "unity-help", "unity-help.csproj", "{21223220-7A12-4C57-9AC4-BA4277FF4220}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Generic|Any CPU = Generic|Any CPU
+		Livesplit|Any CPU = Livesplit|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{21223220-7A12-4C57-9AC4-BA4277FF4220}.Generic|Any CPU.ActiveCfg = Generic|Any CPU
+		{21223220-7A12-4C57-9AC4-BA4277FF4220}.Generic|Any CPU.Build.0 = Generic|Any CPU
+		{21223220-7A12-4C57-9AC4-BA4277FF4220}.Livesplit|Any CPU.ActiveCfg = Livesplit|Any CPU
+		{21223220-7A12-4C57-9AC4-BA4277FF4220}.Livesplit|Any CPU.Build.0 = Livesplit|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {35ECA79B-1388-4674-A778-1F4C23AF1D0E}
+	EndGlobalSection
+EndGlobal

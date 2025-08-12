@@ -1,0 +1,60 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>JHelper</RootNamespace>
+    <Nullable>enable</Nullable>
+    <BaseOutputPath>bin\</BaseOutputPath>
+    <Configurations>Livesplit;Generic</Configurations>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Livesplit|AnyCPU'">
+    <WarningLevel>4</WarningLevel>
+    <DebugType>none</DebugType>
+    <DefineConstants>$(DefineConstants);LIVESPLIT</DefineConstants>
+    <Optimize>True</Optimize>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Generic|AnyCPU'">
+    <Optimize>True</Optimize>
+    <DebugType>none</DebugType>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="PolySharp" Version="1.15.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Irony">
+      <HintPath>.\ref\Irony.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="LiveSplit.Core">
+      <HintPath>.\ref\LiveSplit.Core.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="LiveSplit.ScriptableAutoSplit">
+      <HintPath>.\ref\LiveSplit.ScriptableAutoSplit.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="LiveSplit.View">
+      <HintPath>.\ref\LiveSplit.View.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Buffers">
+      <HintPath>.\ref\System.Buffers.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Memory">
+      <HintPath>.\ref\System.Memory.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
