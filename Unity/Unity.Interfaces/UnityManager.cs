@@ -14,7 +14,15 @@ public abstract class UnityManager<Assembly, Class, Image, Field> : IUnityManage
     /// <summary>
     /// Gets an image by its assembly name.
     /// </summary>
-    public Image? GetImage(string assemblyName) => GetAssemblies().FirstOrDefault(a => a.GetName() == assemblyName).GetImage();
+    public Image? GetImage(string assemblyName)
+    {
+        using (IEnumerator<Assembly> enumerator = GetAssemblies().Where(a => a.GetName() == assemblyName).GetEnumerator())
+        {
+            return enumerator.MoveNext()
+                ? enumerator.Current.GetImage()
+                : null;
+        }
+    }
 
     /// <summary>
     /// Gets the default Image for "Assembly-CSharp".

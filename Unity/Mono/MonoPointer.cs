@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 
 namespace JHelper.UnityManagers.Mono;
 
@@ -12,24 +11,33 @@ public class MonoPointer(Mono manager, string assemblyName, string className, in
     private readonly int noOfParents = noOfParents;
     private readonly dynamic[] fields = offsets;
     private readonly Mono manager = manager;
-    private readonly MonoImage image = manager.GetImage(assemblyName).GetValueOrDefault();
 
     private IntPtr baseAddress = IntPtr.Zero;
     private readonly int[] offsets = new int[offsets.Length];
     private int resolvedOffsets = 0;
+    private MonoImage? image;
     private MonoClass? startingClass = null;
+    private string assemblyName = assemblyName;
 
     private bool FindOffsets()
     {
         if (resolvedOffsets == offsets.Length)
             return true;
 
+        if (this.image is null)
+        {
+            MonoImage? image = manager.GetImage(assemblyName);
+            if (!image.HasValue)
+                return false;
+            this.image = image.Value;
+        }
+
         MonoClass _startingClass;
         if (startingClass.HasValue)
             _startingClass = startingClass.Value;
         else
         {
-            MonoClass? @class = image.GetClass(className);
+            MonoClass? @class = image.Value.GetClass(className);
             if (!@class.HasValue)
                 return false;
 
@@ -85,7 +93,7 @@ public class MonoPointer(Mono manager, string assemblyName, string className, in
                 if (fields[i] is not string _f)
                     return false;
 
-                var field = currentClass.GetFieldOffset(_f); //.EnumFields().FirstOrDefault(f => f.GetName() == _f).GetOffset();
+                var field = currentClass.GetFieldOffset(_f);
                 if (field.HasValue)
                     currentOffset = field.Value;
                 else

@@ -147,7 +147,11 @@ public readonly record struct MonoImage : IUnityImage<MonoClass, MonoField>
     /// <param name="className">The name of the class to find.</param>
     public MonoClass? GetClass(string className)
     {
-        return EnumClasses()
-            .FirstOrDefault(c => c.GetName() == className);
+        using (var enumerator = EnumClasses().Where(c => c.GetName() == className).GetEnumerator())
+        {
+            return enumerator.MoveNext()
+                ? enumerator.Current
+                : null;
+        }
     }
 }

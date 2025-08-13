@@ -1,7 +1,9 @@
 ﻿using JHelper.Common.ProcessInterop;
+using JHelper.Logging;
 using JHelper.UnityManagers.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace JHelper.UnityManagers.IL2CPP;
 
@@ -72,16 +74,47 @@ public partial class IL2CPP : UnityManager<IL2CPPAssembly, IL2CPPClass, IL2CPPIm
         Offsets = new IL2CPPOffsets(version, helper.Process);
 
         // Locate IL2CPP assemblies pointer
-        Assemblies = helper.Process.Scan(new ScanPattern(12, "48 FF C5 80 3C ?? 00 75 ?? 48 8B 1D") { OnFound = (addr) => addr + 0x4 + helper.Process.Read<int>(addr) }, module);
-        if (Assemblies == IntPtr.Zero)
-            throw new Exception("Failed while trying to resolve IL2CPP assemblies.");
+        if (module.Symbols.TryGetValue("il2cpp_domain_get_assemblies", out IntPtr assembliesSymbol)
+            && helper.Process.Read<ulong>(assembliesSymbol, out ulong magic) && magic == 0x8B4820EC83485340)
+        {
+            assembliesSymbol += 10;
+            if (!helper.Process.Read<int>(assembliesSymbol, out int offsets))
+                throw new KeyNotFoundException("IL2CPP assemblies pointer resolution failed.");
+            assembliesSymbol += 0x4 + offsets + 0x3;
+            Assemblies = assembliesSymbol + 0x4 + helper.Process.Read<int>(assembliesSymbol);
+        }
+        else
+        {
+            Assemblies = helper.Process.Scan(new ScanPattern(12, "48 FF C5 80 3C ?? 00 75 ?? 48 8B 1D") { OnFound = (addr) => addr + 0x4 + helper.Process.Read<int>(addr) }, module);
+            if (Assemblies == IntPtr.Zero)
+                throw new Exception("Failed while trying to resolve IL2CPP assemblies.");
+        }
 
         // Locate TypeInfoDefinitionTable pointer (different patterns may be required for different Unity versions)
+
+        /*
         TypeInfoDefinitionTable = helper.Process.Scan(new ScanPattern(-4, "48 83 3C ?? 00 75 ?? 8B C? E8") { OnFound = (addr) => helper.Process.ReadPointer(addr + 0x4 + helper.Process.Read<int>(addr)) }, module);
         if (TypeInfoDefinitionTable == IntPtr.Zero)
             TypeInfoDefinitionTable = helper.Process.Scan(new ScanPattern(3, "48 8B 05 ?? ?? ?? ?? 4C 8D 34 F0") { OnFound = (addr) => helper.Process.ReadPointer(addr + 0x4 + helper.Process.Read<int>(addr)) }, module);
         if (TypeInfoDefinitionTable == IntPtr.Zero)
             throw new Exception("Failed while trying to resolve IL2CPP assemblies.");
+        */
+
+        IntPtr pMetadata = helper.Process.Scan(new ScanPattern(0, "67 6C 6F 62 61 6C 2D 6D 65 74 61 64 61 74 61 2E 64 61 74"), module);
+        if (pMetadata == IntPtr.Zero)
+            throw new Exception("Failed while trying to resolve IL2CPP assemblies (pMetadata).");
+
+        IntPtr lea = helper.Process.ScanAll(new ScanPattern(3, "48 8D 0D"), module.BaseAddress, module.ModuleMemorySize).FirstOrDefault(addr => addr + 0x4 + helper.Process.Read<int>(addr) == pMetadata);
+        if (lea == IntPtr.Zero)
+            throw new Exception("Failed while trying to resolve IL2CPP assemblies (lea).");
+
+        IntPtr shr = helper.Process.Scan(new ScanPattern(3, "48 C1 E9"), lea, 0x200);
+        if (shr == IntPtr.Zero)
+            throw new Exception("Failed while trying to resolve IL2CPP assemblies (shr).");
+
+        TypeInfoDefinitionTable = helper.Process.Scan(new ScanPattern(3, "48 89 05") { OnFound = addr => addr + 0x4 + helper.Process.Read<int>(addr) }, shr, 0x100);
+        if (TypeInfoDefinitionTable == IntPtr.Zero)
+            throw new Exception("Failed while trying to resolve IL2CPP assemblies (TypeInfoDefinitionTable).");
     }
 
     /// <summary>

@@ -68,14 +68,19 @@ public readonly record struct IL2CPPClass : IUnityClass<IL2CPPClass, IL2CPPField
     /// </summary>
     public int? GetFieldOffset(string fieldName)
     {
-        return EnumFields()
-            .FirstOrDefault(f => {
+        using (var enumerator = EnumFields()
+            .Where(f => {
                 string name = f.GetName();
                 return name.EndsWith("k__BackingField")
                     ? name == "<" + fieldName + ">k__BackingField"
                     : name == fieldName;
             })
-            .GetOffset();
+            .GetEnumerator())
+        {
+            return enumerator.MoveNext()
+                ? enumerator.Current.GetOffset()
+                : null;
+        }
     }
 
     /// <summary>

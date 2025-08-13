@@ -30,42 +30,14 @@ public partial class Mono
         }
 
         ProcessModule UnityPlayer = helper.Process.Modules["UnityPlayer.dll"];
-        IntPtr addr = helper.Process.Scan(new ScanPattern(0, "00 32 30 32 ?? 2E"), UnityPlayer);
-        if (addr == IntPtr.Zero)
-            return MonoVersion.V2;
+        int major = UnityPlayer.FileVersionInfo.FileMajorPart;
+        int minor = UnityPlayer.FileVersionInfo.FileMinorPart;
 
-        Span<byte> buf = stackalloc byte[6];
-        helper.Process.ReadArray(addr + 1, buf);
-
-        const byte ZERO = 0x30;
-        const byte NINE = 0x39;
-
-        int index = buf.IndexOf((byte)'.');
-        if (index == -1)
-            throw new Exception("An error occurred while trying to detect the version of the Mono structs used in the current game.");
-
-        int unity = 0;
-        foreach (byte entry in buf[..index])
+        return (major, minor) switch
         {
-            if (entry >= ZERO && entry <= NINE)
-                unity = unity * 10 + (entry - ZERO);
-            else
-                break;
-        }
-
-        int unity_minor = 0;
-        foreach (byte entry in buf[(index + 1)..])
-        {
-            if (entry >= ZERO && entry <= NINE)
-                unity_minor = unity_minor * 10 + (entry - ZERO);
-            else
-                break;
-        }
-
-        if ((unity == 2021 && unity_minor >= 2) || (unity > 2021))
-            return MonoVersion.V3;
-        else
-            return MonoVersion.V2;
+            (2021, >= 2) or (> 2021, _) => MonoVersion.V3,
+            _ => MonoVersion.V2
+        };
     }
 }
 

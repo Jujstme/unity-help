@@ -8,7 +8,7 @@ namespace JHelper.UnityManagers.IL2CPP;
 /// Represents a single IL2CPP field definition from Unity's metadata.
 /// Provides access to its name and memory offset.
 /// </summary>
-public readonly struct IL2CPPField : IUnityField
+public readonly record struct IL2CPPField : IUnityField
 {
     /// <summary>
     /// Memory address of this field in the target process.

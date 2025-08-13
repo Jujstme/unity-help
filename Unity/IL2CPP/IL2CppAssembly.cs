@@ -31,7 +31,7 @@ public readonly record struct IL2CPPAssembly : IUnityAssembly<IL2CPPImage, IL2CP
     /// </summary>
     public IL2CPPImage? GetImage()
     {
-         return manager.Helper.Process.ReadPointer(assembly + manager.Offsets.MonoAssembly_Image, out IntPtr value) && value != IntPtr.Zero
+        return manager.Helper.Process.ReadPointer(assembly + manager.Offsets.MonoAssembly_Image, out IntPtr value) && value != IntPtr.Zero
             ? new IL2CPPImage(manager, value)
             : null;
     }
@@ -80,10 +80,13 @@ public readonly record struct IL2CPPImage : IUnityImage<IL2CPPClass, IL2CPPField
         if (metadataPtr == IntPtr.Zero)
             yield break;
 
-        if (!manager.Helper.Process.Read<int>(metadataPtr, out int metadataHandle))
+        if (!manager.Helper.Process.Read<int>(metadataPtr, out int metadataHandle) || metadataHandle == 0)
             yield break;
 
-        IntPtr ptr = manager.TypeInfoDefinitionTable + metadataHandle * manager.Helper.Process.PointerSize;
+        if (!manager.Helper.Process.ReadPointer(manager.TypeInfoDefinitionTable, out IntPtr typeInfoTablePtr))
+            yield break;
+
+        IntPtr ptr = typeInfoTablePtr + metadataHandle * manager.Helper.Process.PointerSize;
 
         if (manager.Helper.Process.Is64Bit)
         {
@@ -136,7 +139,11 @@ public readonly record struct IL2CPPImage : IUnityImage<IL2CPPClass, IL2CPPField
     /// <param name="className">The name of the class to find.</param>
     public IL2CPPClass? GetClass(string className)
     {
-        return EnumClasses()
-            .FirstOrDefault(c => c.GetName() == className);
+        using (var enumerator = EnumClasses().Where(c => c.GetName() == className).GetEnumerator())
+        {
+            return enumerator.MoveNext()
+                ? enumerator.Current
+                : null;
+        }
     }
 }

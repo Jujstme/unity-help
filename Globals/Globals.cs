@@ -20,5 +20,5 @@ public static class Globals
     /// <summary>
     /// Delay in milliseconds between retry attempts for hooking.
     /// </summary>
-    public const int HookRetryDelay = 150;
+    public const int HookRetryDelay = 16;
 }

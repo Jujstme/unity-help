@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 
 namespace JHelper.UnityManagers.IL2CPP;
 
@@ -12,20 +11,21 @@ public class IL2CPPPointer
     private readonly int noOfParents;
     private readonly dynamic[] fields;
     private readonly IL2CPP manager;
-    private readonly IL2CPPImage image;
 
     private IntPtr baseAddress;
     private readonly int[] offsets;
     private int resolvedOffsets;
-    private IL2CPPClass? startingClass;
+    private IL2CPPImage? image;
+    private IL2CPPClass? startingClass = null;
+    private string assemblyName;
 
     public IL2CPPPointer(IL2CPP manager, string assemblyName, string className, int noOfParents, params dynamic[] offsets)
     {
         this.manager = manager;
-        this.image = manager.GetImage(assemblyName).GetValueOrDefault();
         this.className = className;
         this.noOfParents = noOfParents;
         this.fields = offsets;
+        this.assemblyName = assemblyName;
 
         baseAddress = IntPtr.Zero;
         this.offsets = new int[offsets.Length];
@@ -38,12 +38,20 @@ public class IL2CPPPointer
         if (resolvedOffsets == offsets.Length)
             return true;
 
+        if (this.image is null)
+        {
+            IL2CPPImage? image = manager.GetImage(assemblyName);
+            if (!image.HasValue)
+                return false;
+            this.image = image.Value;
+        }
+
         IL2CPPClass _startingClass;
         if (startingClass.HasValue)
             _startingClass = startingClass.Value;
         else
         {
-            IL2CPPClass? @class = image.GetClass(className);
+            IL2CPPClass? @class = image.Value.GetClass(className);
             if (!@class.HasValue)
                 return false;
 
@@ -57,6 +65,7 @@ public class IL2CPPPointer
             startingClass = @class.Value;
             _startingClass = @class.Value;
         }
+
 
         if (baseAddress == IntPtr.Zero)
         {
