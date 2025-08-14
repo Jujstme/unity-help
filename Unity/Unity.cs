@@ -43,6 +43,8 @@ public partial class Unity : JHelper.HelperBase.HelperBase
     public override void Dispose()
     {
         _monoType = MonoTypeEnum.Undefined;
+        IL2CPP = null!;
+        Mono = null!;
         base.Dispose();
     }
 }

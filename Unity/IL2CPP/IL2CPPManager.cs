@@ -123,8 +123,10 @@ public partial class IL2CPP : UnityManager<IL2CPPAssembly, IL2CPPClass, IL2CPPIm
                 Span<T> buf = buffer.Span;
                 if (!process.ReadArray<T>(Assemblies, buf))
                     yield break;
-                count = (int)(((nint)Unsafe.ToIntPtr(buf[1]) - (nint)Unsafe.ToIntPtr(buf[0])) / process.PointerSize);
+                 
                 assemblies = Unsafe.ToIntPtr(buf[0]);
+                count = (int)(((nint)Unsafe.ToIntPtr(buf[1]) - assemblies) / process.PointerSize);
+
             }
 
             if (count == 0 || assemblies == IntPtr.Zero)
@@ -138,8 +140,9 @@ public partial class IL2CPP : UnityManager<IL2CPPAssembly, IL2CPPClass, IL2CPPIm
 
                 for (int i = 0; i < count; i++)
                 {
-                    if (Unsafe.ToIntPtr(addresses[i]) != IntPtr.Zero)
-                        yield return new IL2CPPAssembly(this, Unsafe.ToIntPtr(addresses[i]));
+                    IntPtr assembly = Unsafe.ToIntPtr(addresses[i]);
+                    if (assembly != IntPtr.Zero)
+                        yield return new IL2CPPAssembly(this, assembly);
                 }
             }
             finally

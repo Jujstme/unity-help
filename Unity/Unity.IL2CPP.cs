@@ -10,10 +10,7 @@ namespace JHelper;
 
 public partial class Unity
 {
-    /// <summary>
-    /// Backing field to the IL2CPP manager for the currently hooked game.
-    /// </summary>
-    private IL2CPP? _il2cpp;
+    private readonly object il2cppLock = new();
 
     /// <summary>
     /// Gets the <see cref="IL2CPP"/> manager for the hooked Unity game.
@@ -30,31 +27,42 @@ public partial class Unity
             if (MonoType != MonoTypeEnum.IL2CPP)
                 throw new InvalidOperationException("You are trying to access the IL2CPP manager on a non-IL2CPP game");
 
-            if (_il2cpp is null)
+            if (field is null)
             {
-                // Attempt to initialize the IL2CPP manager, retrying up to 5 times.
-                for (int i = 0; i < Globals.HookRetryAttempts; i++)
+                lock (il2cppLock)
                 {
-                    try
+                    // Attempt to initialize the IL2CPP manager, retrying up to 5 times.
+                    for (int i = 0; i < Globals.HookRetryAttempts; i++)
                     {
-                        _il2cpp = new IL2CPP(this);
-                        break;
-                    }
-                    catch
-                    {
-                        Task.Delay(Globals.HookRetryDelay).Wait();
+                        try
+                        {
+                            field = new IL2CPP(this);
+                            break;
+                        }
+                        catch
+                        {
+                            Task.Delay(Globals.HookRetryDelay).Wait();
+                        }
                     }
                 }
 
-                if (_il2cpp is null)
+                if (field is null)
                     throw new InvalidOperationException("Failed to instantiate the IL2CPP manager.");
 
                 // Log details about the hooked Unity process and IL2CPP version.
                 Log.Info($"  => Unity Game process: {Process.ProcessName}");
-                Log.Info($"  => Using IL2CPP struct version: {_il2cpp.Version}");
+                Log.Info($"  => Using IL2CPP struct version: {field.Version}");
             }
 
-            return _il2cpp;
+            return field;
+        }
+
+        private set
+        {
+            lock (il2cppLock)
+            {
+                field = value;
+            }
         }
     }
 }
