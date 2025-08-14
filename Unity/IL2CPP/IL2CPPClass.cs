@@ -1,4 +1,5 @@
-﻿using JHelper.Common.ProcessInterop.API;
+﻿using JHelper.Common.ProcessInterop;
+using JHelper.Common.ProcessInterop.API;
 using JHelper.UnityManagers.Interfaces;
 using System;
 using System.Collections.Generic;
@@ -35,6 +36,9 @@ public readonly record struct IL2CPPClass : IUnityClass<IL2CPPClass, IL2CPPField
     /// </summary>
     public IEnumerable<IL2CPPField> EnumFields()
     {
+        ProcessMemory process = manager.Helper.Process;
+        int fieldCountOffset = manager.Offsets.MonoClass_FieldCount;
+        int fieldsOffset = manager.Offsets.MonoClass_Fields;
         IL2CPPClass? thisClass = this;
 
         while (true)
@@ -43,22 +47,20 @@ public readonly record struct IL2CPPClass : IUnityClass<IL2CPPClass, IL2CPPField
                 break;
 
             // Stop if we've reached base object types or UnityEngine types.
-            if (thisClass.Value.GetName() is not string name || name == "Object" || thisClass.Value.GetNamespace() is not string nameSpace || nameSpace == "UnityEngine")
+            if (thisClass.Value.GetName() == "Object" || thisClass.Value.GetNamespace() == "UnityEngine")
                 break;
 
-            int fieldCount = manager.Helper.Process.Read<short>(@class + manager.Offsets.MonoClass_FieldCount);
-
-            IntPtr fields = fieldCount != 0 ? manager.Helper.Process.ReadPointer(@class + manager.Offsets.MonoClass_Fields) : IntPtr.Zero;
+            if (process.Read<ushort>(thisClass.Value.@class + fieldCountOffset, out ushort fieldCount) && fieldCount > 0 && fieldCount != ushort.MaxValue)
+            {
+                if (process.ReadPointer(thisClass.Value.@class + fieldsOffset, out IntPtr fields) && fields != IntPtr.Zero)
+                {
+                    for (int i = 0; i < fieldCount; i++)
+                        yield return new IL2CPPField(manager, fields + i * manager.Offsets.MonoClassField_StructSize);
+                }
+            }
 
             // Move to parent class for next iteration.
             thisClass = thisClass.Value.GetParent();
-
-            // Yield current class's fields.
-            if (fieldCount > 0 && fields != IntPtr.Zero)
-            {
-                for (int i = 0; i < fieldCount; i++)
-                    yield return new IL2CPPField(manager, fields + i * manager.Offsets.MonoClassField_StructSize);
-            }
         }
     }
 

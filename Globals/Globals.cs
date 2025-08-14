@@ -1,4 +1,6 @@
-﻿namespace JHelper;
+﻿using System;
+
+namespace JHelper;
 
 /// <summary>
 /// Contains global constants used throughout the JHelper library.
@@ -20,5 +22,22 @@ public static class Globals
     /// <summary>
     /// Delay in milliseconds between retry attempts for hooking.
     /// </summary>
-    public const int HookRetryDelay = 16;
+    public const int HookRetryDelay = 150;
 }
+
+public static class Unsafe
+{
+    unsafe internal static int ToInt<T>(T value) where T : unmanaged => *(int*)&value;
+
+    unsafe internal static IntPtr ToIntPtr<T>(T value) where T : unmanaged
+    {
+        if (sizeof(T) == 4)
+            return (IntPtr)(*(int*)&value);
+        else if (sizeof(T) == 8)
+            return (IntPtr)(*(long*)&value);
+        else
+            throw new InvalidOperationException($"Unsupported type {typeof(T)} for conversion to IntPtr.");
+    }
+}
+
+

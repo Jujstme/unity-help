@@ -1,4 +1,5 @@
-﻿using JHelper.Common.ProcessInterop.API;
+﻿using JHelper.Common.ProcessInterop;
+using JHelper.Common.ProcessInterop.API;
 using JHelper.UnityManagers.Interfaces;
 using System;
 using System.Buffers;
@@ -69,36 +70,42 @@ public readonly record struct IL2CPPImage : IUnityImage<IL2CPPClass, IL2CPPField
     /// </summary>
     public IEnumerable<IL2CPPClass> EnumClasses()
     {
-        int typeCount = manager.Helper.Process.Read<int>(image + manager.Offsets.MonoImage_TypeCount);
-        if (typeCount == 0)
-            yield break;
+        ProcessMemory process = manager.Helper.Process;
+        IntPtr image = this.image;
 
-        IntPtr metadataPtr = manager.Version == IL2CPPVersion.V2020
-            ? manager.Helper.Process.ReadPointer(image + manager.Offsets.MonoImage_MetadataHandle)
-            : image + manager.Offsets.MonoImage_MetadataHandle;
+        return process.Is64Bit
+            ? EnumClassesInternal<long>(manager)
+            : EnumClassesInternal<int>(manager);
 
-        if (metadataPtr == IntPtr.Zero)
-            yield break;
-
-        if (!manager.Helper.Process.Read<int>(metadataPtr, out int metadataHandle) || metadataHandle == 0)
-            yield break;
-
-        if (!manager.Helper.Process.ReadPointer(manager.TypeInfoDefinitionTable, out IntPtr typeInfoTablePtr))
-            yield break;
-
-        IntPtr ptr = typeInfoTablePtr + metadataHandle * manager.Helper.Process.PointerSize;
-
-        if (manager.Helper.Process.Is64Bit)
+        IEnumerable<IL2CPPClass> EnumClassesInternal<T>(IL2CPP manager) where T : unmanaged
         {
-            long[] buffer = ArrayPool<long>.Shared.Rent(typeCount);
+            int typeCount = process.Read<int>(image + manager.Offsets.MonoImage_TypeCount);
+            if (typeCount == 0)
+                yield break;
+
+            IntPtr metadataPtr = manager.Version != IL2CPPVersion.Base && manager.Version != IL2CPPVersion.V2019
+                ? process.ReadPointer(image + manager.Offsets.MonoImage_MetadataHandle)
+                : image + manager.Offsets.MonoImage_MetadataHandle;
+
+            if (metadataPtr == IntPtr.Zero)
+                yield break;
+
+            if (!process.Read<int>(metadataPtr, out int metadataHandle) || metadataHandle == 0)
+                yield break;
+
+            if (!process.ReadPointer(manager.TypeInfoDefinitionTable, out IntPtr typeInfoTablePtr) || typeInfoTablePtr == IntPtr.Zero)
+                yield break;
+
+            IntPtr ptr = typeInfoTablePtr + metadataHandle * process.PointerSize;
+
+            T[] buffer = ArrayPool<T>.Shared.Rent(typeCount);
             try
             {
-
-                if (manager.Helper.Process.ReadArray<long>(ptr, buffer.AsSpan(0, typeCount)))
+                if (process.ReadArray(ptr, buffer.AsSpan(0, typeCount)))
                 {
                     for (int i = 0; i < typeCount; i++)
                     {
-                        IntPtr klass = (IntPtr)buffer[i];
+                        IntPtr klass = Unsafe.ToIntPtr(buffer[i]);
                         if (klass != IntPtr.Zero)
                             yield return new IL2CPPClass(manager, klass);
                     }
@@ -106,28 +113,7 @@ public readonly record struct IL2CPPImage : IUnityImage<IL2CPPClass, IL2CPPField
             }
             finally
             {
-                ArrayPool<long>.Shared.Return(buffer);
-            }
-        }
-        else
-        {
-            int[] buffer = ArrayPool<int>.Shared.Rent(typeCount);
-            try
-            {
-
-                if (manager.Helper.Process.ReadArray<int>(ptr, buffer.AsSpan(0, typeCount)))
-                {
-                    for (int i = 0; i < typeCount; i++)
-                    {
-                        IntPtr klass = (IntPtr)buffer[i];
-                        if (klass != IntPtr.Zero)
-                            yield return new IL2CPPClass(manager, klass);
-                    }
-                }
-            }
-            finally
-            {
-                ArrayPool<int>.Shared.Return(buffer);
+                ArrayPool<T>.Shared.Return(buffer);
             }
         }
     }

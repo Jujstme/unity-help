@@ -1,4 +1,5 @@
-﻿using JHelper.Common.ProcessInterop.API;
+﻿using JHelper.Common.ProcessInterop;
+using JHelper.Common.ProcessInterop.API;
 using JHelper.UnityManagers.Interfaces;
 using System;
 using System.Collections.Generic;
@@ -48,6 +49,12 @@ public readonly record struct MonoClass : IUnityClass<MonoClass, MonoField>
     /// </summary>
     public IEnumerable<MonoField> EnumFields()
     {
+        // Storing as local variables should be much faster than accessing properties repeatedly.
+        ProcessMemory process = manager.Helper.Process;
+        int fieldCountOffset = manager.Offsets.MonoClassDef_FieldCount;
+        int fieldsOffset = manager.Offsets.MonoClassDef_Klass + manager.Offsets.MonoClass_Fields;
+        int monoClassFieldAlignment = manager.Offsets.MonoClassFieldAlignment;
+
         MonoClass? thisClass = this;
 
         while (true)
@@ -55,23 +62,20 @@ public readonly record struct MonoClass : IUnityClass<MonoClass, MonoField>
             if (thisClass is null)
                 break;
 
-            if (thisClass.Value.GetName() is not string name || name == "Object" || thisClass.Value.GetName() is not string nameSpace || nameSpace == "UnityEngine")
+            if (thisClass.Value.GetName() == "Object" || thisClass.Value.GetNamespace() == "UnityEngine")
                 break;
 
-            int fieldCount = manager.Helper.Process.Read<int>(@class + manager.Offsets.MonoClassDef_FieldCount);
-
-            IntPtr fields = fieldCount == 0
-                ? IntPtr.Zero
-                : manager.Helper.Process.ReadPointer(@class + manager.Offsets.MonoClassDef_Klass + manager.Offsets.MonoClass_Fields);
+            if (process.Read<int>(thisClass.Value.@class + fieldCountOffset, out int fieldCount) && fieldCount > 0)
+            {
+                if (process.ReadPointer(thisClass.Value.@class + fieldsOffset, out IntPtr fields) && fields != IntPtr.Zero)
+                {
+                    for (int i = 0; i < fieldCount; i++)
+                        yield return new MonoField(manager, fields + i * monoClassFieldAlignment);
+                }
+            }
 
             // Move to parent class for next iteration.
             thisClass = thisClass.Value.GetParent();
-
-            if (fieldCount > 0 && fields != IntPtr.Zero)
-            {
-                for (int i = 0; i < fieldCount; i++)
-                    yield return new MonoField(manager, fields + i * manager.Offsets.MonoClassFieldAlignment);
-            }
         }
     }
 
@@ -111,10 +115,12 @@ public readonly record struct MonoClass : IUnityClass<MonoClass, MonoField>
     /// </summary>
     public IntPtr? GetStaticTable()
     {
-        if (!manager.Helper.Process.ReadPointer(@class + manager.Offsets.MonoClassDef_Klass + manager.Offsets.MonoClass_Runtime_Info, out IntPtr runtimeInfo))
+        ProcessMemory process = manager.Helper.Process;
+
+        if (!process.ReadPointer(@class + manager.Offsets.MonoClassDef_Klass + manager.Offsets.MonoClass_Runtime_Info, out IntPtr runtimeInfo) || runtimeInfo == IntPtr.Zero)
             return null;
 
-        if (!manager.Helper.Process.ReadPointer(runtimeInfo + manager.Offsets.MonoClassRuntimeInfo_Domain_VTables, out IntPtr vtables))
+        if (!process.ReadPointer(runtimeInfo + manager.Offsets.MonoClassRuntimeInfo_Domain_VTables, out IntPtr vtables) || vtables == IntPtr.Zero)
             return null;
 
         IntPtr ptr;
@@ -126,13 +132,13 @@ public readonly record struct MonoClass : IUnityClass<MonoClass, MonoField>
         {
             vtables += manager.Offsets.MonoVTable_VTable;
 
-            if (!manager.Helper.Process.Read<int>(@class + manager.Offsets.MonoClassDef_Klass + manager.Offsets.MonoClass_VTableSize, out int vtable_size))
+            if (!process.Read<int>(@class + manager.Offsets.MonoClassDef_Klass + manager.Offsets.MonoClass_VTableSize, out int vtable_size) || vtable_size == 0)
                 return null;
 
-            ptr = vtables + vtable_size * manager.Helper.Process.PointerSize;
+            ptr = vtables + vtable_size * process.PointerSize;
         }
 
-        if (!manager.Helper.Process.ReadPointer(ptr, out IntPtr addr) || ptr == IntPtr.Zero)
+        if (!process.ReadPointer(ptr, out IntPtr addr) || ptr == IntPtr.Zero)
             return null;
 
         return addr;

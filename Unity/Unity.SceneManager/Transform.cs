@@ -1,4 +1,6 @@
-﻿using JHelper.Common.ProcessInterop.API;
+﻿using JHelper.Common.MemoryUtils;
+using JHelper.Common.ProcessInterop;
+using JHelper.Common.ProcessInterop.API;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -18,127 +20,104 @@ public readonly record struct Transform(SceneManager manager, IntPtr address)
 
     public IEnumerable<Transform> EnumChildren()
     {
-        int childCount = 0;
-        IntPtr childPtr = IntPtr.Zero;
+        ProcessMemory process = sceneManager.helper.Process;
+        IntPtr addr = this.address;
+        int childrenPointerOffset = sceneManager.offsets.childrenPointer;
 
-        if (sceneManager.helper.Process.Is64Bit)
-        {
-            Span<long> buf = stackalloc long[3];
-            if (sceneManager.helper.Process.ReadArray(address + sceneManager.offsets.childrenPointer, buf))
-            {
-                childCount = (int)buf[2];
-                childPtr = (IntPtr)buf[0];
-            }
-        }
-        else
-        {
-            Span<int> buf = stackalloc int[3];
-            if (sceneManager.helper.Process.ReadArray(address + sceneManager.offsets.childrenPointer, buf))
-            {
-                childCount = (int)buf[2];
-                childPtr = (IntPtr)buf[0];
-            }
-        }
+        return process.Is64Bit
+            ? EnumChildrenInternal<long>(sceneManager)
+            : EnumChildrenInternal<int>(sceneManager);
 
-        if (childCount > 0 && childCount <= 128)
+        IEnumerable<Transform> EnumChildrenInternal<T>(SceneManager sm) where T : unmanaged
         {
-            IntPtr[] children = ArrayPool<IntPtr>.Shared.Rent(128);
+            int childCount = 0;
+            IntPtr childPtr = IntPtr.Zero;
 
-            if (sceneManager.helper.Process.Is64Bit)
+            using (ArrayRental<T> rental = new(stackalloc T[3]))
             {
-                Span<long> buf = stackalloc long[childCount];
-                if (sceneManager.helper.Process.ReadArray<long>(childPtr, buf))
+                Span<T> buf = rental.Span;
+                if (process.ReadArray(addr + childrenPointerOffset, buf))
                 {
-                    for (int i = 0; i < childCount; i++)
-                    {
-                        children[i] = (IntPtr)buf[i];
-                    }
-                }
-            }
-            else
-            {
-                Span<int> buf = stackalloc int[childCount];
-                if (sceneManager.helper.Process.ReadArray<int>(childPtr, buf))
-                {
-                    for (int i = 0; i < childCount; i++)
-                    {
-                        children[i] = (IntPtr)buf[i];
-                    }
+                    childCount = Unsafe.ToInt(buf[2]);
+                    childPtr = Unsafe.ToIntPtr(buf[0]);
                 }
             }
 
-            for (int i = 0; i < childCount; i++)
-                yield return new Transform(sceneManager, children[i]);
+            if (childCount > 0 && childCount <= 128)
+            {
+                T[] children = ArrayPool<T>.Shared.Rent(childCount);
+                try
+                {
+                    if (!process.ReadArray(childPtr, children.AsSpan(0, childCount)))
+                        yield break;
 
-            ArrayPool<IntPtr>.Shared.Return(children);
+                    for (int i = 0; i < childCount; i++)
+                        yield return new Transform(sm, Unsafe.ToIntPtr(children[i]));
+                }
+                finally
+                {
+                    ArrayPool<T>.Shared.Return(children);
+                }
+            }
         }
     }
 
     public Transform? GetChild(string name)
     {
-        return EnumChildren().FirstOrDefault(c => c.Name == name);
+        using (var enumerator = EnumChildren().Where(c => c.Name == name).GetEnumerator())
+        {
+            return enumerator.MoveNext()
+                ? enumerator.Current
+                : null;
+        }
     }
 
     public IEnumerable<IntPtr> EnumClasses()
     {
-        IntPtr gameObject = sceneManager.helper.Process.ReadPointer(address + sceneManager.offsets.gameObject);
+        IntPtr addr = address;
 
-        int numberOfComponents = 0;
-        IntPtr mainObject = IntPtr.Zero;
+        return sceneManager.helper.Process.Is64Bit
+            ? EnumClassesInternal<long>(sceneManager)
+            : EnumClassesInternal<int>(sceneManager);
 
-        if (sceneManager.helper.Process.Is64Bit)
+        IEnumerable<IntPtr> EnumClassesInternal<T>(SceneManager sceneManager) where T : unmanaged
         {
-            Span<long> buf = stackalloc long[3];
-            if (sceneManager.helper.Process.ReadArray(gameObject + sceneManager.offsets.gameObject, buf))
-            {
-                numberOfComponents = (int)buf[2];
-                mainObject = (IntPtr)buf[0];
-            }
-        }
-        else
-        {
-            Span<int> buf = stackalloc int[3];
-            if (sceneManager.helper.Process.ReadArray(gameObject + sceneManager.offsets.gameObject, buf))
-            {
-                numberOfComponents = (int)buf[2];
-                mainObject = (IntPtr)buf[0];
-            }
-        }
+            IntPtr gameObject = sceneManager.helper.Process.ReadPointer(addr + sceneManager.offsets.gameObject);
+            int numberOfComponents = 0;
+            IntPtr mainObject = IntPtr.Zero;
 
-        if (numberOfComponents > 0)
-        {
-            IntPtr[] components = ArrayPool<IntPtr>.Shared.Rent(128);
-
-            if (sceneManager.helper.Process.Is64Bit)
+            using (ArrayRental<T> rental = new(stackalloc T[3]))
             {
-                Span<long> buf = stackalloc long[numberOfComponents * 2];
-                if (sceneManager.helper.Process.ReadArray(mainObject, buf))
+                Span<T> buf = rental.Span;
+                if (sceneManager.helper.Process.ReadArray(gameObject + sceneManager.offsets.gameObject, buf))
                 {
-                    for (int i = 1; i < numberOfComponents; i++)
-                    {
-                        components[i] = (IntPtr)buf[i * 2 + 1];
-                    }
-                }
-            }
-            else
-            {
-                Span<int> buf = stackalloc int[numberOfComponents * 2];
-                if (sceneManager.helper.Process.ReadArray(mainObject, buf))
-                {
-                    for (int i = 1; i < numberOfComponents; i++)
-                    {
-                        components[i] = (IntPtr)buf[i * 2 + 1];
-                    }
+                    numberOfComponents = Unsafe.ToInt(buf[2]);
+                    mainObject = Unsafe.ToIntPtr(buf[0]);
                 }
             }
 
-            for (int i = 1; i < numberOfComponents; i++)
-            {
-                if (sceneManager.helper.Process.ReadPointer(components[i] + sceneManager.offsets.klass, out IntPtr ptr) && ptr != IntPtr.Zero)
-                    yield return ptr;
-            }
+            if (numberOfComponents == 0)
+                yield break;
 
-            ArrayPool<IntPtr>.Shared.Return(components);
+            T[] components = ArrayPool<T>.Shared.Rent(numberOfComponents * 2);
+            try
+            {
+                if (sceneManager.helper.Process.ReadArray(mainObject, components.AsSpan(0, numberOfComponents)))
+                {
+                    for (int i = 1; i < numberOfComponents; i++)
+                        components[i] = components[i * 2 + 1];
+                }
+
+                for (int i = 1; i < numberOfComponents; i++)
+                {
+                    if (sceneManager.helper.Process.ReadPointer(Unsafe.ToIntPtr(components[i]) + sceneManager.offsets.klass, out IntPtr ptr) && ptr != IntPtr.Zero)
+                        yield return ptr;
+                }
+            }
+            finally
+            {
+                ArrayPool<T>.Shared.Return(components);
+            }
         }
     }
 
@@ -148,8 +127,14 @@ public readonly record struct Transform(SceneManager manager, IntPtr address)
         var manager = sceneManager;
         var baseAddress = address;
 
-        return EnumClasses().FirstOrDefault(c => isIL2CPP
+        using (var enumerator = EnumClasses().Where(c => isIL2CPP
             ? manager.helper.Process.ReadString(128, baseAddress, 2 * manager.helper.Process.PointerSize, 0) == name
-            : manager.helper.Process.ReadString(128, baseAddress, 0, manager.offsets.klassName, 0) == name);
+            : manager.helper.Process.ReadString(128, baseAddress, 0, manager.offsets.klassName, 0) == name)
+            .GetEnumerator())
+        {
+            return enumerator.MoveNext()
+                ? enumerator.Current
+                : null;
+        }
     }
 }

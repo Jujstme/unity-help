@@ -1,4 +1,5 @@
-﻿using JHelper.Common.ProcessInterop.API;
+﻿using JHelper.Common.ProcessInterop;
+using JHelper.Common.ProcessInterop.API;
 using JHelper.UnityManagers.Interfaces;
 using System;
 using System.Buffers;
@@ -74,68 +75,50 @@ public readonly record struct MonoImage : IUnityImage<MonoClass, MonoField>
     /// </remarks>
     public IEnumerable<MonoClass> EnumClasses()
     {
-        int classCacheSize = manager.Helper.Process.Read<int>(image + manager.Offsets.MonoImage_ClassCache + manager.Offsets.MonoInternalHashtable_size);
+        // Defining locals as they are generally faster to access
+        ProcessMemory process = manager.Helper.Process;
+        IntPtr image = this.image;
+        int nextClassCache = manager.Offsets.MonoClassDef_NextClassCache;
 
-        if (classCacheSize == 0)
-            yield break;
+        return process.Is64Bit
+            ? EnumClassesInternal<long>(manager)
+            : EnumClassesInternal<int>(manager);
 
-        IntPtr tableAddr = classCacheSize == 0
-            ? IntPtr.Zero
-            : manager.Helper.Process.ReadPointer(image + manager.Offsets.MonoImage_ClassCache + manager.Offsets.MonoInternalHashtable_table);
-
-        if (tableAddr == IntPtr.Zero)
-            yield break;
-
-        if (manager.Helper.Process.Is64Bit)
+        IEnumerable<MonoClass> EnumClassesInternal<T>(Mono manager) where T : unmanaged
         {
-            long[] buf64 = ArrayPool<long>.Shared.Rent(classCacheSize);
+            if (!process.Read<int>(image + manager.Offsets.MonoImage_ClassCache + manager.Offsets.MonoInternalHashtable_size, out int classCacheSize) || classCacheSize == 0)
+                yield break;
+
+            if (!process.ReadPointer(image + manager.Offsets.MonoImage_ClassCache + manager.Offsets.MonoInternalHashtable_table, out IntPtr tableAddr) || tableAddr == IntPtr.Zero)
+                yield break;
+
+            T[] buf = ArrayPool<T>.Shared.Rent(classCacheSize);
             try
             {
-                if (manager.Helper.Process.ReadArray<long>(tableAddr, buf64.AsSpan(0, classCacheSize)))
+                if (process.ReadArray(tableAddr, buf.AsSpan(0, classCacheSize)))
                 {
                     for (int i = 0; i < classCacheSize; i++)
                     {
-                        IntPtr table = (IntPtr)buf64[i];
-                        while (table != IntPtr.Zero)
+                        IntPtr table = Unsafe.ToIntPtr(buf[i]);
+                        while (true)
                         {
-                            if (!manager.Helper.Process.Read<long>(table, out long @class) || @class == 0)
+                            if (!process.Read<T>(table, out T @class))
                                 break;
+                            IntPtr klass = Unsafe.ToIntPtr(@class);
 
-                            yield return new MonoClass(manager, (IntPtr)@class);
-                            table = manager.Helper.Process.ReadPointer(table + manager.Offsets.MonoClassDef_NextClassCache);
+                            if (klass == IntPtr.Zero)
+                                break;
+                            yield return new MonoClass(manager, klass);
+
+                            if (!process.ReadPointer(table + nextClassCache, out table) || table == IntPtr.Zero)
+                                break;
                         }
                     }
                 }
             }
             finally
             {
-                ArrayPool<long>.Shared.Return(buf64);
-            }
-        }
-        else
-        {
-            int[] buf32 = ArrayPool<int>.Shared.Rent(classCacheSize);
-            try
-            {
-                if (manager.Helper.Process.ReadArray<int>(tableAddr, buf32.AsSpan(0, classCacheSize)))
-                {
-                    for (int i = 0; i < classCacheSize; i++)
-                    {
-                        IntPtr table = (IntPtr)buf32[i];
-                        while (table != IntPtr.Zero)
-                        {
-                            if (!manager.Helper.Process.Read<int>(table, out int @class) || @class == 0)
-                                break;
-                            
-                            yield return new MonoClass(manager, (IntPtr)@class);
-                            table = manager.Helper.Process.ReadPointer(table + manager.Offsets.MonoClassDef_NextClassCache);
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                ArrayPool<int>.Shared.Return(buf32);
+                ArrayPool<T>.Shared.Return(buf);
             }
         }
     }
@@ -147,7 +130,7 @@ public readonly record struct MonoImage : IUnityImage<MonoClass, MonoField>
     /// <param name="className">The name of the class to find.</param>
     public MonoClass? GetClass(string className)
     {
-        using (var enumerator = EnumClasses().Where(c => c.GetName() == className).GetEnumerator())
+        using (IEnumerator<MonoClass> enumerator = EnumClasses().Where(c => c.GetName() == className).GetEnumerator())
         {
             return enumerator.MoveNext()
                 ? enumerator.Current

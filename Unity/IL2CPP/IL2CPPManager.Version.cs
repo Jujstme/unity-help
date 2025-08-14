@@ -13,10 +13,13 @@ public partial class IL2CPP
         if (major < 2019)
             return IL2CPPVersion.Base;
 
-        IntPtr ptr = Memory.Scan(new ScanPattern(6, "48 2B ?? 48 2B ?? ?? ?? ?? ?? 48 F7 ?? 48"), Memory.Modules["GameAssembly.dll"]);            
+        IntPtr ptr = Memory.Scan(new ScanPattern(6, "48 2B ?? 48 2B ?? ?? ?? ?? ?? 48 F7 ?? 48") { OnFound = addr => addr + 0x4 + Memory.Read<int>(addr) }, Memory.Modules["GameAssembly.dll"]);            
         if (ptr == IntPtr.Zero)
             throw new InvalidOperationException("Failed to identify the current version of IL2CPP");
-        int version = Memory.Read<int>(ptr + 0x4 + Memory.Read<int>(ptr), 0x4);
+        if (!Memory.ReadPointer(ptr, out ptr) || ptr == IntPtr.Zero)
+            throw new InvalidOperationException("Failed to read the IL2CPP version pointer");
+        if (!Memory.Read(ptr + 0x4, out uint version) || version == 0 || version == 0xFFFFFFFF)
+            throw new InvalidOperationException("Failed to read the IL2CPP version");
 
         return version switch
         {

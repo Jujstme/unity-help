@@ -50,40 +50,28 @@ public partial class Mono : UnityManager<MonoAssembly, MonoClass, MonoImage, Mon
         Helper = helper;
         Version = version;
 
-        ProcessModule MonoModule = Helper.Process.Modules.First(m => new string[] { "mono.dll", "mono-2.0-bdwgc.dll" }.Contains(m.ModuleName));
+        ProcessMemory process = Helper.Process;
+        ProcessModule monoModule = process.Modules.First(m => new string[] { "mono.dll", "mono-2.0-bdwgc.dll" }.Contains(m.ModuleName));
+        IntPtr rootdomainFunctionAddress = monoModule.Symbols["mono_assembly_foreach"];
+        Offsets = new MonoOffsets(Version, process);
 
-        Offsets = new MonoOffsets(Version, Helper.Process);
-        IntPtr RootdomainFunctionAddress = MonoModule.Symbols["mono_assembly_foreach"];
-
-        if (Helper.Process.Is64Bit)
+        if (process.Is64Bit)
         {
-            IntPtr ptr = Helper.Process.Scan(new ScanPattern(3, "48 8B 0D"), RootdomainFunctionAddress, 0x100);
-            if (ptr == IntPtr.Zero)
-                throw new InvalidOperationException("Failed to resolve the Mono assemblies addresses");
-
-            Assemblies = ptr + 0x4 + Helper.Process.Read<int>(ptr);
+            Assemblies = process.Scan(new ScanPattern(3, "48 8B 0D") { OnFound = addr => addr + 0x4 + process.Read<int>(addr) }, rootdomainFunctionAddress, 0x100);
         }
         else
         {
             ScanPattern[] patterns =
             [
-                new ScanPattern(2, "FF 35"),
-                new ScanPattern(2, "8B 0D"),
+                new ScanPattern(2, "FF 35") { OnFound = addr => (IntPtr)process.Read<int>(addr) },
+                new ScanPattern(2, "8B 0D") { OnFound = addr => (IntPtr)process.Read<int>(addr) },
             ];
 
-            IntPtr ptr = IntPtr.Zero;
-            foreach (ScanPattern pattern in patterns)
-            {
-                ptr = Helper.Process.Scan(pattern, RootdomainFunctionAddress, 0x100);
-                if (ptr != IntPtr.Zero)
-                    break;
-            }
-            if (ptr == IntPtr.Zero)
-                throw new InvalidOperationException("Failed to resolve the Mono assemblies addresses");
-            if (!Helper.Process.ReadPointer(ptr, out ptr))
-                throw new InvalidOperationException("Failed to resolve the Mono assemblies addresses");
-            Assemblies = ptr;
+            Assemblies = patterns.Select(pattern => process.Scan(pattern, rootdomainFunctionAddress, 0x100)).FirstOrDefault(addr => addr != IntPtr.Zero);
         }
+
+        if (Assemblies == IntPtr.Zero)
+            throw new InvalidOperationException("Failed to resolve the Mono assemblies addresses");
     }
 
 #if LIVESPLIT
@@ -98,42 +86,32 @@ public partial class Mono : UnityManager<MonoAssembly, MonoClass, MonoImage, Mon
     /// </summary>
     public override IEnumerable<MonoAssembly> GetAssemblies()
     {
-        IntPtr assembly = Helper.Process.ReadPointer(Assemblies);
+        ProcessMemory process = Helper.Process;
+        IntPtr assemblies = Assemblies;
 
-        if (Helper.Process.Is64Bit)
+        return process.Is64Bit
+            ? GetAssembliesInternal<long>()
+            : GetAssembliesInternal<int>();
+
+        IEnumerable<MonoAssembly> GetAssembliesInternal<T>() where T : unmanaged
         {
-            long[] buffer = ArrayPool<long>.Shared.Rent(2);
+            if (!process.ReadPointer(assemblies, out IntPtr assembly) || assembly == IntPtr.Zero)
+                yield break;
+
+            T[] buffer = ArrayPool<T>.Shared.Rent(2);
             try
             {
                 while (assembly != IntPtr.Zero)
                 {
-                    if (!Helper.Process.ReadArray<long>(assembly, buffer.AsSpan(0, 2)))
+                    if (!process.ReadArray<T>(assembly, buffer.AsSpan(0, 2)))
                         break;
-                    assembly = (IntPtr)buffer[1];
-                    yield return new MonoAssembly(this, (IntPtr)buffer[0]);
+                    yield return new MonoAssembly(this, Unsafe.ToIntPtr(buffer[0]));
+                    assembly = Unsafe.ToIntPtr(buffer[1]);
                 }
             }
             finally
             {
-                ArrayPool<long>.Shared.Return(buffer);
-            }
-        }
-        else
-        {
-            int[] buffer = ArrayPool<int>.Shared.Rent(2);
-            try
-            {
-                while (assembly != IntPtr.Zero)
-                {
-                    if (!Helper.Process.ReadArray<int>(assembly, buffer.AsSpan(0, 2)))
-                        break;
-                    assembly = (IntPtr)buffer[1];
-                    yield return new MonoAssembly(this, (IntPtr)buffer[0]);
-                }
-            }
-            finally
-            {
-                ArrayPool<int>.Shared.Return(buffer);
+                ArrayPool<T>.Shared.Return(buffer);
             }
         }
     }

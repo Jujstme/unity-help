@@ -1,4 +1,5 @@
-﻿using System;
+﻿using JHelper.Common.ProcessInterop;
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,73 +10,53 @@ public readonly partial record struct Scene
 {
     public IEnumerable<Transform> EnumRootGameObjects()
     {
-        IntPtr list_first = manager.helper.Process.ReadPointer(address + manager.offsets.rootStorageContainer);
-        IntPtr current_list = list_first;
+        ProcessMemory process = manager.helper.Process;
+        IntPtr address = this.address;
 
+        return process.Is64Bit
+            ? EnumRootGameObjectsInternal<long>(manager)
+            : EnumRootGameObjectsInternal<int>(manager);
 
-        if (manager.helper.Process.Is64Bit)
+        IEnumerable<Transform> EnumRootGameObjectsInternal<T>(SceneManager sm) where T : unmanaged
         {
-            long[] buf = ArrayPool<long>.Shared.Rent(3);
+            if (!process.ReadPointer(address + sm.offsets.rootStorageContainer, out IntPtr list_first) || list_first == IntPtr.Zero)
+                yield break;
+
+            IntPtr current_list = list_first;
+
+            T[] buf = ArrayPool<T>.Shared.Rent(3);
             try
             {
                 while (true)
                 {
-                    if (current_list == IntPtr.Zero)
+                    if (!process.ReadArray<T>(current_list, buf.AsSpan(0, 3)))
                         break;
 
-                    IntPtr first;
+                    yield return new Transform(sm, Unsafe.ToIntPtr(buf[2]));
 
-                    if (!manager.helper.Process.ReadArray<long>(current_list, buf.AsSpan(0, 3)))
+                    IntPtr first = Unsafe.ToIntPtr(buf[0]);
+
+                    // If the first element is the same as the current list, we reached the end of the list
+                    if (list_first == first)
                         break;
 
-                    first = (IntPtr)buf[0];
-
-                    current_list = list_first == first
-                        ? IntPtr.Zero
-                        : first;
-
-                    yield return new Transform(manager, (IntPtr)buf[2]);
+                    current_list = first;
                 }
             }
             finally
             {
-                ArrayPool<long>.Shared.Return(buf);
-            }
-        }
-        else
-        {
-            int[] buf = ArrayPool<int>.Shared.Rent(3);
-            try
-            {
-                while (true)
-                {
-                    if (current_list == IntPtr.Zero)
-                        break;
-
-                    IntPtr first;
-
-                    if (!manager.helper.Process.ReadArray<int>(current_list, buf.AsSpan(0, 3)))
-                        break;
-
-                    first = (IntPtr)buf[0];
-
-                    current_list = list_first == first
-                        ? IntPtr.Zero
-                        : first;
-
-                    yield return new Transform(manager, (IntPtr)buf[2]);
-                }
-            }
-            finally
-            {
-                ArrayPool<int>.Shared.Return(buf);
+                ArrayPool<T>.Shared.Return(buf);
             }
         }
     }
 
     public Transform? GetRootGameObject(string name)
     {
-        return EnumRootGameObjects()
-            .FirstOrDefault(t => t.Name == name);
+        using (var enumerator = EnumRootGameObjects().Where(t => t.Name == name).GetEnumerator())
+        {
+            return enumerator.MoveNext()
+                ? enumerator.Current
+                : null;
+        }
     }
 }

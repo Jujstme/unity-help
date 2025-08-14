@@ -1,7 +1,8 @@
-﻿using JHelper.Common.ProcessInterop;
-using JHelper.Logging;
+﻿using JHelper.Common.MemoryUtils;
+using JHelper.Common.ProcessInterop;
 using JHelper.UnityManagers.Interfaces;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -63,56 +64,40 @@ public partial class IL2CPP : UnityManager<IL2CPPAssembly, IL2CPPClass, IL2CPPIm
     private IL2CPP(Unity helper, IL2CPPVersion version)
 #endif
     {
-        if (!helper.Process.Is64Bit)
+        ProcessMemory process = helper.Process;
+
+        if (!process.Is64Bit)
             throw new InvalidOperationException("32-bit versions of IL2CPP are not supported.");
 
-        if (!helper.Process.Modules.TryGetValue("GameAssembly.dll", out ProcessModule module))
+        if (!process.Modules.TryGetValue("GameAssembly.dll", out ProcessModule module))
             throw new KeyNotFoundException("GameAssembly.dll not found in process modules.");
 
         Helper = helper;
         Version = version;
-        Offsets = new IL2CPPOffsets(version, helper.Process);
+        Offsets = new IL2CPPOffsets(version, process);
 
         // Locate IL2CPP assemblies pointer
-        if (module.Symbols.TryGetValue("il2cpp_domain_get_assemblies", out IntPtr assembliesSymbol)
-            && helper.Process.Read<ulong>(assembliesSymbol, out ulong magic) && magic == 0x8B4820EC83485340)
-        {
-            assembliesSymbol += 10;
-            if (!helper.Process.Read<int>(assembliesSymbol, out int offsets))
-                throw new KeyNotFoundException("IL2CPP assemblies pointer resolution failed.");
-            assembliesSymbol += 0x4 + offsets + 0x3;
-            Assemblies = assembliesSymbol + 0x4 + helper.Process.Read<int>(assembliesSymbol);
-        }
-        else
-        {
-            Assemblies = helper.Process.Scan(new ScanPattern(12, "48 FF C5 80 3C ?? 00 75 ?? 48 8B 1D") { OnFound = (addr) => addr + 0x4 + helper.Process.Read<int>(addr) }, module);
-            if (Assemblies == IntPtr.Zero)
-                throw new Exception("Failed while trying to resolve IL2CPP assemblies.");
-        }
+        Assemblies = process.Scan(new ScanPattern(5, "75 ?? 48 8B 1D ?? ?? ?? ?? 48 3B 1D") {  OnFound = (addr) => addr + 0x4 + process.Read<int>(addr) }, module);
+        if (Assemblies == IntPtr.Zero)
+            throw new Exception("Failed while trying to resolve IL2CPP assemblies.");
 
         // Locate TypeInfoDefinitionTable pointer (different patterns may be required for different Unity versions)
+        {
+            IntPtr pMetadata = process.Scan(new ScanPattern(0, "67 6C 6F 62 61 6C 2D 6D 65 74 61 64 61 74 61 2E 64 61 74 00"), module);
+            if (pMetadata == IntPtr.Zero)
+                throw new Exception("Failed while trying to resolve IL2CPP assemblies (pMetadata).");
 
-        /*
-        TypeInfoDefinitionTable = helper.Process.Scan(new ScanPattern(-4, "48 83 3C ?? 00 75 ?? 8B C? E8") { OnFound = (addr) => helper.Process.ReadPointer(addr + 0x4 + helper.Process.Read<int>(addr)) }, module);
-        if (TypeInfoDefinitionTable == IntPtr.Zero)
-            TypeInfoDefinitionTable = helper.Process.Scan(new ScanPattern(3, "48 8B 05 ?? ?? ?? ?? 4C 8D 34 F0") { OnFound = (addr) => helper.Process.ReadPointer(addr + 0x4 + helper.Process.Read<int>(addr)) }, module);
-        if (TypeInfoDefinitionTable == IntPtr.Zero)
-            throw new Exception("Failed while trying to resolve IL2CPP assemblies.");
-        */
+            IntPtr lea = process.ScanAll(new ScanPattern(3, "48 8D 0D"), module.BaseAddress, module.ModuleMemorySize).FirstOrDefault(addr => addr + 0x4 + process.Read<int>(addr) == pMetadata);
+            if (lea == IntPtr.Zero)
+                throw new Exception("Failed while trying to resolve IL2CPP assemblies (lea).");
 
-        IntPtr pMetadata = helper.Process.Scan(new ScanPattern(0, "67 6C 6F 62 61 6C 2D 6D 65 74 61 64 61 74 61 2E 64 61 74"), module);
-        if (pMetadata == IntPtr.Zero)
-            throw new Exception("Failed while trying to resolve IL2CPP assemblies (pMetadata).");
+            IntPtr shr = process.Scan(new ScanPattern(3, "48 C1 E9"), lea, 0x200);
+            if (shr == IntPtr.Zero)
+                throw new Exception("Failed while trying to resolve IL2CPP assemblies (shr).");
 
-        IntPtr lea = helper.Process.ScanAll(new ScanPattern(3, "48 8D 0D"), module.BaseAddress, module.ModuleMemorySize).FirstOrDefault(addr => addr + 0x4 + helper.Process.Read<int>(addr) == pMetadata);
-        if (lea == IntPtr.Zero)
-            throw new Exception("Failed while trying to resolve IL2CPP assemblies (lea).");
+            TypeInfoDefinitionTable = process.Scan(new ScanPattern(3, "48 89 05") { OnFound = addr => addr + 0x4 + process.Read<int>(addr) }, shr, 0x100);
+        }
 
-        IntPtr shr = helper.Process.Scan(new ScanPattern(3, "48 C1 E9"), lea, 0x200);
-        if (shr == IntPtr.Zero)
-            throw new Exception("Failed while trying to resolve IL2CPP assemblies (shr).");
-
-        TypeInfoDefinitionTable = helper.Process.Scan(new ScanPattern(3, "48 89 05") { OnFound = addr => addr + 0x4 + helper.Process.Read<int>(addr) }, shr, 0x100);
         if (TypeInfoDefinitionTable == IntPtr.Zero)
             throw new Exception("Failed while trying to resolve IL2CPP assemblies (TypeInfoDefinitionTable).");
     }
@@ -122,32 +107,45 @@ public partial class IL2CPP : UnityManager<IL2CPPAssembly, IL2CPPClass, IL2CPPIm
     /// </summary>
     public override IEnumerable<IL2CPPAssembly> GetAssemblies()
     {
-        int count = 0;
-        IntPtr assemblies = IntPtr.Zero;
+        ProcessMemory process = Helper.Process;
 
-        if (Helper.Process.Is64Bit)
-        {
-            Span<long> buffer = stackalloc long[2];
-            if (Helper.Process.ReadArray<long>(Assemblies, buffer))
-            {
-                count = (int)((buffer[1] - buffer[0]) / Helper.Process.PointerSize);
-                assemblies = (IntPtr)buffer[0];
-            }
-        }
-        else
-        {
-            Span<int> buffer = stackalloc int[2];
-            if (Helper.Process.ReadArray<int>(Assemblies, buffer))
-            {
-                count = (buffer[1] - buffer[0]) / Helper.Process.PointerSize;
-                assemblies = (IntPtr)buffer[0];
-            }
-        }
+        return process.Is64Bit
+            ? GetAssembliesInternal<long>()
+            : GetAssembliesInternal<int>();
 
-        for (int i = 0; i < count; i++)
+        IEnumerable<IL2CPPAssembly> GetAssembliesInternal<T>() where T : unmanaged
         {
-            if (Helper.Process.ReadPointer(assemblies + i * Helper.Process.PointerSize, out IntPtr addr) && addr != IntPtr.Zero)
-                yield return new IL2CPPAssembly(this, addr);
+            int count = 0;
+            IntPtr assemblies = IntPtr.Zero;
+
+            using (ArrayRental<T> buffer = new(stackalloc T[2]))
+            {
+                Span<T> buf = buffer.Span;
+                if (!process.ReadArray<T>(Assemblies, buf))
+                    yield break;
+                count = (int)(((nint)Unsafe.ToIntPtr(buf[1]) - (nint)Unsafe.ToIntPtr(buf[0])) / process.PointerSize);
+                assemblies = Unsafe.ToIntPtr(buf[0]);
+            }
+
+            if (count == 0 || assemblies == IntPtr.Zero)
+                yield break;
+
+            T[] addresses = ArrayPool<T>.Shared.Rent(count);
+            try
+            {
+                if (!process.ReadArray(assemblies, addresses.AsSpan(0, count)))
+                    yield break;
+
+                for (int i = 0; i < count; i++)
+                {
+                    if (Unsafe.ToIntPtr(addresses[i]) != IntPtr.Zero)
+                        yield return new IL2CPPAssembly(this, Unsafe.ToIntPtr(addresses[i]));
+                }
+            }
+            finally
+            {
+                ArrayPool<T>.Shared.Return(addresses);
+            }
         }
     }
 }
