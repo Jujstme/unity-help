@@ -59,9 +59,9 @@ public partial class IL2CPP : UnityManager<IL2CPPAssembly, IL2CPPClass, IL2CPPIm
         : this(helper, DetectVersion(helper.Process)) { }
 
 #if LIVESPLIT
-    private IL2CPP(global::Unity helper, IL2CPPVersion version)
+    public IL2CPP(global::Unity helper, IL2CPPVersion version)
 #else
-    private IL2CPP(Unity helper, IL2CPPVersion version)
+    public IL2CPP(Unity helper, IL2CPPVersion version)
 #endif
     {
         ProcessMemory process = helper.Process;

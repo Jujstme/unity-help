@@ -37,8 +37,8 @@ public readonly record struct IL2CPPClass : IUnityClass<IL2CPPClass, IL2CPPField
     public IEnumerable<IL2CPPField> EnumFields()
     {
         ProcessMemory process = manager.Helper.Process;
-        int fieldCountOffset = manager.Offsets.MonoClass_FieldCount;
-        int fieldsOffset = manager.Offsets.MonoClass_Fields;
+        int fieldCountOffset = manager.Offsets.klass.fieldCount;
+        int fieldsOffset = manager.Offsets.klass.fields;
         IL2CPPClass? thisClass = this;
 
         while (true)
@@ -55,7 +55,7 @@ public readonly record struct IL2CPPClass : IUnityClass<IL2CPPClass, IL2CPPField
                 if (process.ReadPointer(thisClass.Value.@class + fieldsOffset, out IntPtr fields) && fields != IntPtr.Zero)
                 {
                     for (int i = 0; i < fieldCount; i++)
-                        yield return new IL2CPPField(manager, fields + i * manager.Offsets.MonoClassField_StructSize);
+                        yield return new IL2CPPField(manager, fields + i * manager.Offsets.field.structSize);
                 }
             }
 
@@ -90,7 +90,7 @@ public readonly record struct IL2CPPClass : IUnityClass<IL2CPPClass, IL2CPPField
     /// </summary>
     public string GetName()
     {
-        return manager.Helper.Process.ReadString(128, StringType.ASCII, @class + manager.Offsets.MonoClass_Name, 0);
+        return manager.Helper.Process.ReadString(128, StringType.ASCII, @class + manager.Offsets.klass.name, 0);
     }
 
     /// <summary>
@@ -98,7 +98,7 @@ public readonly record struct IL2CPPClass : IUnityClass<IL2CPPClass, IL2CPPField
     /// </summary>
     public string GetNamespace()
     {
-        return manager.Helper.Process.ReadString(64, StringType.ASCII, @class + manager.Offsets.MonoClass_NameSpace, 0);
+        return manager.Helper.Process.ReadString(64, StringType.ASCII, @class + manager.Offsets.klass.namespaze, 0);
     }
 
     /// <summary>
@@ -106,7 +106,7 @@ public readonly record struct IL2CPPClass : IUnityClass<IL2CPPClass, IL2CPPField
     /// </summary>
     public IL2CPPClass? GetParent()
     {
-        return manager.Helper.Process.ReadPointer(@class + manager.Offsets.MonoClass_Parent, out IntPtr value)
+        return manager.Helper.Process.ReadPointer(@class + manager.Offsets.klass.parent, out IntPtr value)
             ? new IL2CPPClass(manager, value)
             : null;
     }
@@ -116,7 +116,7 @@ public readonly record struct IL2CPPClass : IUnityClass<IL2CPPClass, IL2CPPField
     /// </summary>
     public IntPtr? GetStaticTable()
     {
-        return manager.Helper.Process.ReadPointer(@class + manager.Offsets.MonoClass_StaticFields, out IntPtr value)
+        return manager.Helper.Process.ReadPointer(@class + manager.Offsets.klass.staticFields, out IntPtr value)
             ? value
             : null;
     }

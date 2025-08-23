@@ -10,21 +10,19 @@ public partial class IL2CPP
         ProcessModule UnityPlayer = Memory.Modules["UnityPlayer.dll"];
 
         int major = UnityPlayer.FileVersionInfo.FileMajorPart;
-        if (major < 2019)
-            return IL2CPPVersion.Base;
+        int minor = UnityPlayer.FileVersionInfo.FileMinorPart;
 
-        IntPtr ptr = Memory.Scan(new ScanPattern(6, "48 2B ?? 48 2B ?? ?? ?? ?? ?? 48 F7 ?? 48") { OnFound = addr => addr + 0x4 + Memory.Read<int>(addr) }, Memory.Modules["GameAssembly.dll"]);            
-        if (ptr == IntPtr.Zero)
-            throw new InvalidOperationException("Failed to identify the current version of IL2CPP");
-        if (!Memory.ReadPointer(ptr, out ptr) || ptr == IntPtr.Zero)
-            throw new InvalidOperationException("Failed to read the IL2CPP version pointer");
-        if (!Memory.Read(ptr + 0x4, out uint version) || version == 0 || version == 0xFFFFFFFF)
-            throw new InvalidOperationException("Failed to read the IL2CPP version");
+        return ForceVersion(major, minor);
+    }
 
-        return version switch
+    public static IL2CPPVersion ForceVersion(int major, int minor)
+    {
+        return (major, minor) switch
         {
-            >= 27 => IL2CPPVersion.V2020,
-            _ => IL2CPPVersion.V2019,
+            ( >= 2023, _) => IL2CPPVersion.V2023,
+            ( >= 2021 and < 2023, _) or (2020, >= 2) => IL2CPPVersion.V2020,
+            ( >= 2019 and < 2020, _) => IL2CPPVersion.V2019,
+            _ => IL2CPPVersion.Base
         };
     }
 }
@@ -34,4 +32,5 @@ public enum IL2CPPVersion
     Base,
     V2019,
     V2020,
+    V2023,
 }

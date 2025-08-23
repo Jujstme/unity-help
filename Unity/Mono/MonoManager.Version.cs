@@ -33,9 +33,14 @@ public partial class Mono
         int major = UnityPlayer.FileVersionInfo.FileMajorPart;
         int minor = UnityPlayer.FileVersionInfo.FileMinorPart;
 
+        return ForceVersion(major, minor);
+    }
+
+    public static MonoVersion ForceVersion(int major, int minor)
+    {
         return (major, minor) switch
         {
-            (2021, >= 2) or (> 2021, _) => MonoVersion.V3,
+            (2021, >= 2) or ( > 2021, _) => MonoVersion.V3,
             _ => MonoVersion.V2
         };
     }

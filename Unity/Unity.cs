@@ -40,6 +40,12 @@ public partial class Unity : JHelper.HelperBase.HelperBase
 
 #endif
 
+    public void SetUnityVersion(int major, int minor)
+    {
+        if (MonoType == MonoTypeEnum.IL2CPP)
+            IL2CPP = new JHelper.UnityManagers.IL2CPP.IL2CPP(this, JHelper.UnityManagers.IL2CPP.IL2CPP.ForceVersion(major, minor));
+    }
+
     public override void Dispose()
     {
         _monoType = MonoTypeEnum.Undefined;

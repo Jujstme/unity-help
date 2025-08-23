@@ -28,7 +28,7 @@ public readonly record struct IL2CPPField : IUnityField
     /// </summary>
     public string GetName()
     {
-        return manager.Helper.Process.ReadString(64, StringType.ASCII, field + manager.Offsets.MonoClassField_Name, 0);
+        return manager.Helper.Process.ReadString(64, StringType.ASCII, field + manager.Offsets.field.name, 0);
     }
 
     /// <summary>
@@ -39,7 +39,7 @@ public readonly record struct IL2CPPField : IUnityField
     /// </returns>
     public int? GetOffset()
     {
-        return manager.Helper.Process.Read<int>(field + manager.Offsets.MonoClassField_Offset, out int value)
+        return manager.Helper.Process.Read<int>(field + manager.Offsets.field.offset, out int value)
             ? value
             : null;
     }

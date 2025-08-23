@@ -5,20 +5,39 @@ namespace JHelper.UnityManagers.IL2CPP;
 
 public readonly struct IL2CPPOffsets
 {
-    internal readonly byte MonoAssembly_Image;
-    internal readonly byte MonoAssembly_Aname;
-    internal readonly byte MonoAssemblyName_Name;
-    internal readonly byte MonoImage_TypeCount;
-    internal readonly byte MonoImage_MetadataHandle;
-    internal readonly byte MonoClass_Name;
-    internal readonly byte MonoClass_NameSpace;
-    internal readonly byte MonoClass_Fields;
-    internal readonly short MonoClass_FieldCount;
-    internal readonly byte MonoClass_StaticFields;
-    internal readonly byte MonoClass_Parent;
-    internal readonly byte MonoClassField_StructSize;
-    internal readonly byte MonoClassField_Name;
-    internal readonly byte MonoClassField_Offset;
+    internal readonly Assembly assembly;
+    internal readonly Image image;
+    internal readonly Class klass;
+    internal readonly FieldInfo field;
+
+    internal readonly struct Assembly(byte image, byte aname)
+    {
+        internal readonly byte image = image;
+        internal readonly byte aname = aname;
+    }
+
+    internal readonly struct Image(byte typeCount, byte metadataHandle)
+    {
+        internal readonly byte typeCount = typeCount;
+        internal readonly byte metadataHandle = metadataHandle; // For older IL2CPP version, this is Image.typeStart
+    }
+
+    internal readonly struct Class(byte name, byte namespaze, byte parent, byte fields, byte staticFields, short fieldCount)
+    {
+        internal readonly byte name = name;
+        internal readonly byte namespaze = namespaze;
+        internal readonly byte parent = parent;
+        internal readonly byte fields = fields;
+        internal readonly byte staticFields = staticFields;
+        internal readonly short fieldCount = fieldCount;
+    }
+
+    internal readonly struct FieldInfo(byte name, byte offset, byte structSize)
+    {
+        internal readonly byte name = name;
+        internal readonly byte offset = offset;
+        internal readonly byte structSize = structSize;
+    }
 
     internal IL2CPPOffsets(IL2CPPVersion version, ProcessMemory process)
     {
@@ -26,54 +45,35 @@ public readonly struct IL2CPPOffsets
         {
             if (version == IL2CPPVersion.Base)
             {
-                MonoAssembly_Image = 0x0;
-                MonoAssembly_Aname = 0x18;
-                MonoAssemblyName_Name = 0x0;
-                MonoImage_TypeCount = 0x1C;
-                MonoImage_MetadataHandle = 0x18; // MonoImage.typeStart
-                MonoClass_Name = 0x10;
-                MonoClass_NameSpace = 0x18;
-                MonoClass_Fields = 0x80;
-                MonoClass_FieldCount = 0x114;
-                MonoClass_StaticFields = 0xB8;
-                MonoClass_Parent = 0x58;
-                MonoClassField_StructSize = 0x20;
-                MonoClassField_Name = 0x0;
-                MonoClassField_Offset = 0x18;
+                assembly = new(0x0, 0x18);
+                image = new(0x1C, 0x18);
+                klass = new(0x10, 0x18, 0x58, 0x80, 0xB8, 0x114);
+                field = new(0x0, 0x18, 0x20);
             }
             else if (version == IL2CPPVersion.V2019)
             {
-                MonoAssembly_Image = 0x0;
-                MonoAssembly_Aname = 0x18;
-                MonoAssemblyName_Name = 0x0;
-                MonoImage_TypeCount = 0x1C;
-                MonoImage_MetadataHandle = 0x18; // MonoImage.typeStart
-                MonoClass_Name = 0x10;
-                MonoClass_NameSpace = 0x18;
-                MonoClass_Fields = 0x80;
-                MonoClass_FieldCount = 0x11C;
-                MonoClass_StaticFields = 0xB8;
-                MonoClass_Parent = 0x58;
-                MonoClassField_StructSize = 0x20;
-                MonoClassField_Name = 0x0;
-                MonoClassField_Offset = 0x18;
+                assembly = new(0x0, 0x18);
+                image = new(0x1C, 0x18);
+                klass = new(0x10, 0x18, 0x58, 0x80, 0xB8, 0x11C);
+                field = new(0x0, 0x18, 0x20);
+            }
+            else if (version == IL2CPPVersion.V2020)
+            {
+                assembly = new(0x0, 0x18);
+                image = new(0x1C, 0x18);
+                klass = new(0x10, 0x18, 0x58, 0x80, 0xB8, 0x120);
+                field = new(0x0, 0x18, 0x20);
+            }
+            else if (version == IL2CPPVersion.V2023)
+            {
+                assembly = new(0x0, 0x18);
+                image = new(0x1C, 0x18);
+                klass = new(0x10, 0x18, 0x58, 0x80, 0xB8, 0x124);
+                field = new(0x0, 0x18, 0x20);
             }
             else
             {
-                MonoAssembly_Image = 0x0;
-                MonoAssembly_Aname = 0x18;
-                MonoAssemblyName_Name = 0x0;
-                MonoImage_TypeCount = 0x18;
-                MonoImage_MetadataHandle = 0x28;
-                MonoClass_Name = 0x10;
-                MonoClass_NameSpace = 0x18;
-                MonoClass_Fields = 0x80;
-                MonoClass_FieldCount = 0x120;
-                MonoClass_StaticFields = 0xB8;
-                MonoClass_Parent = 0x58;
-                MonoClassField_StructSize = 0x20;
-                MonoClassField_Name = 0x0;
-                MonoClassField_Offset = 0x18;
+                throw new NotSupportedException("Unknown version for the IL2CPP structs.");
             }
         }
         else

@@ -32,7 +32,7 @@ public readonly record struct IL2CPPAssembly : IUnityAssembly<IL2CPPImage, IL2CP
     /// </summary>
     public IL2CPPImage? GetImage()
     {
-        return manager.Helper.Process.ReadPointer(assembly + manager.Offsets.MonoAssembly_Image, out IntPtr value) && value != IntPtr.Zero
+        return manager.Helper.Process.ReadPointer(assembly + manager.Offsets.assembly.image, out IntPtr value) && value != IntPtr.Zero
             ? new IL2CPPImage(manager, value)
             : null;
     }
@@ -42,7 +42,7 @@ public readonly record struct IL2CPPAssembly : IUnityAssembly<IL2CPPImage, IL2CP
     /// </summary>
     public string GetName()
     {
-        return manager.Helper.Process.ReadString(128, StringType.ASCII, assembly + manager.Offsets.MonoAssembly_Aname + manager.Offsets.MonoAssemblyName_Name, 0);
+        return manager.Helper.Process.ReadString(128, StringType.ASCII, assembly + manager.Offsets.assembly.aname, 0);
     }
 }
 
@@ -79,13 +79,13 @@ public readonly record struct IL2CPPImage : IUnityImage<IL2CPPClass, IL2CPPField
 
         IEnumerable<IL2CPPClass> EnumClassesInternal<T>(IL2CPP manager) where T : unmanaged
         {
-            int typeCount = process.Read<int>(image + manager.Offsets.MonoImage_TypeCount);
+            int typeCount = process.Read<int>(image + manager.Offsets.image.typeCount);
             if (typeCount == 0)
                 yield break;
 
             IntPtr metadataPtr = manager.Version != IL2CPPVersion.Base && manager.Version != IL2CPPVersion.V2019
-                ? process.ReadPointer(image + manager.Offsets.MonoImage_MetadataHandle)
-                : image + manager.Offsets.MonoImage_MetadataHandle;
+                ? process.ReadPointer(image + manager.Offsets.image.metadataHandle)
+                : image + manager.Offsets.image.metadataHandle;
 
             if (metadataPtr == IntPtr.Zero)
                 yield break;
