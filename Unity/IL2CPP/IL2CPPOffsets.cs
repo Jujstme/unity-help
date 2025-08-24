@@ -64,7 +64,7 @@ public readonly struct IL2CPPOffsets
                 klass = new(0x10, 0x18, 0x58, 0x80, 0xB8, 0x120);
                 field = new(0x0, 0x18, 0x20);
             }
-            else if (version == IL2CPPVersion.V2023)
+            else if (version == IL2CPPVersion.V2022)
             {
                 assembly = new(0x0, 0x18);
                 image = new(0x18, 0x28);

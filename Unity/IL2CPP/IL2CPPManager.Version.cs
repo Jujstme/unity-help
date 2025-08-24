@@ -19,9 +19,9 @@ public partial class IL2CPP
     {
         return (major, minor) switch
         {
-            ( >= 2023, _) => IL2CPPVersion.V2023,
-            ( >= 2021 and < 2023, _) or (2020, >= 2) => IL2CPPVersion.V2020,
-            ( >= 2019 and < 2020, _) => IL2CPPVersion.V2019,
+            (>= 2023, _) or (2022, >= 2) => IL2CPPVersion.V2022,
+            (>= 2021 and <2023, _) or (2020, >= 2) => IL2CPPVersion.V2020,
+            (2020, <2) or (2019, _) => IL2CPPVersion.V2019,
             _ => IL2CPPVersion.Base
         };
     }
@@ -32,5 +32,5 @@ public enum IL2CPPVersion
     Base,
     V2019,
     V2020,
-    V2023,
+    V2022,
 }
