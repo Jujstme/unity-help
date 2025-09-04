@@ -55,10 +55,10 @@ public class MonoImage : UnityImage
 
         void EnumClassesInternal<T>(Mono manager) where T : unmanaged
         {
-            if (!process.Read<int>(image + manager.Offsets.image.classCache + manager.Offsets.hashTable.size, out int classCacheSize) || classCacheSize == 0)
+            if (!process.Read<int>(image + manager.Offsets.image.classCache + manager.Offsets.hashTable.size, out int classCacheSize) || classCacheSize <= 0)
                 return;
 
-            if (!process.ReadPointer(image + manager.Offsets.image.classCache + manager.Offsets.hashTable.size, out IntPtr tableAddr) || tableAddr == IntPtr.Zero)
+            if (!process.ReadPointer(image + manager.Offsets.image.classCache + manager.Offsets.hashTable.table, out IntPtr tableAddr) || tableAddr == IntPtr.Zero)
                 return;
 
             T[] buf = ArrayPool<T>.Shared.Rent(classCacheSize);

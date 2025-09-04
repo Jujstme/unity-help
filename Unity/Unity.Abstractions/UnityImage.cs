@@ -127,9 +127,9 @@ public abstract class UnityImage
         foreach (var c in _cachedClasses.OrderBy(c => c.Name))
         {
             if (string.IsNullOrEmpty(c.Namespace))
-                Log.Info($"    => {c.Name}: 0x{Address.ToString("X")}");
+                Log.Info($"    => {c.Name}: 0x{c.Address.ToString("X")}");
             else
-                Log.Info($"    => {c.Namespace}.{c.Name}: 0x{Address.ToString("X")}");
+                Log.Info($"    => {c.Namespace}.{c.Name}: 0x{c.Address.ToString("X")}");
         }
     }
 }

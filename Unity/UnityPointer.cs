@@ -200,7 +200,16 @@ public class UnityPointer
             return false;
         }
 
-        return manager.Helper.Process.DerefOffsets(baseAddress, out address, offsets);
+        address = baseAddress;
+
+        for (int i = 0; i < offsets.Length - 1; i++)
+        {
+            if (!manager.Helper.Process.ReadPointer(address + offsets[i], out address))
+                return false;
+        }
+
+        address += offsets[^1];
+        return true;
     }
 
     /// <summary>

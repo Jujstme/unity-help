@@ -60,7 +60,7 @@ public class MonoClass : UnityClass
     {
         Mono manager = (Mono)Manager;
 
-        if (!Manager.Helper.Process.DerefOffsets(Address + manager.Offsets.klass.parent, out IntPtr parentAddr, 0, 0))
+        if (!Manager.Helper.Process.ReadPointer(Address + manager.Offsets.klass.parent, out IntPtr parentAddr))
             return null;
 
         if (!Manager.Helper.Process.ReadPointer(parentAddr + manager.Offsets.klass.image, out IntPtr imageAddr))
@@ -105,7 +105,7 @@ public class MonoClass : UnityClass
         {
             vtables += manager.Offsets.vtable.vtable;
 
-            if (!process.Read<int>(Address + manager.Offsets.klass.vtableSize, out int vtable_size) || vtable_size == 0)
+            if (!process.Read<int>(Address + manager.Offsets.klass.vtableSize, out int vtable_size) || vtable_size <= 0)
                 return IntPtr.Zero;
 
             ptr = vtables + vtable_size * process.PointerSize;

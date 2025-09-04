@@ -64,6 +64,37 @@ public partial class Unity
     }
 
     /// <summary>
+    /// Manually overrides the Unity version used by the helper,
+    /// bypassing automatic version detection.
+    /// </summary>
+    /// <param name="major">
+    /// The major Unity version number (e.g., 2019 for Unity 2019.x).
+    /// </param>
+    /// <param name="minor">
+    /// The minor Unity version number (e.g., 4 for Unity 2019.4.x).
+    /// </param>
+    /// <remarks>
+    /// This method should only be used if automatic detection fails or is unreliable.
+    /// Forcing a version that does not match the actual Unity runtime will cause
+    /// incorrect memory layouts, crashes, or undefined behavior.
+    /// </remarks>
+    public void SetVersion(int major, int minor)
+    {
+        Log.Info($"  => Manually setting Unity version to: {major}.{minor}");
+
+        if (MonoType == MonoTypeEnum.IL2CPP)
+        {
+            Manager = new IL2CPP(this, IL2CPP.ForceVersion(major, minor));
+            Log.Info($"  => Using IL2CPP struct version: {((IL2CPP)Manager).Version}");
+        }
+        else if (MonoType == MonoTypeEnum.Mono)
+        {
+            Manager = new Mono(this, Mono.ForceVersion(major, minor));
+            Log.Info($"  => Using Mono struct version: {((Mono)Manager).Version}");
+        }
+    }
+
+    /// <summary>
     /// Indexer for accessing <see cref="UnityImage"/>s by name.
     /// </summary>
     /// <param name="name">The name of the assembly to retrieve.</param>
