@@ -1,59 +1,31 @@
 ﻿using JHelper.Common.ProcessInterop;
 using JHelper.Common.ProcessInterop.API;
-using JHelper.UnityManagers.Interfaces;
+using JHelper.UnityManagers.Abstractions;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 
 namespace JHelper.UnityManagers.Mono;
 
-/// <summary>
-/// Represents a managed Mono class definition inside the target Unity process.
-/// Provides metadata access (name, namespace, fields) and runtime information 
-/// through direct memory reading.
-/// </summary>
-public readonly record struct MonoClass : IUnityClass<MonoClass, MonoField>
+public class MonoClass : UnityClass
 {
-    /// <summary>
-    /// Memory address of this class in the target process.
-    /// </summary>
-    internal readonly IntPtr @class;
-
-    private readonly Mono manager;
-
     internal MonoClass(Mono manager, IntPtr address)
     {
-        this.manager = manager;
-        this.@class = address;
+        Manager = manager;
+        Address = address;
     }
 
-    /// <summary>
-    /// Retrieves the name of this class.
-    /// </summary>
-    public string GetName()
-    {
-        return manager.Helper.Process.ReadString(128, StringType.ASCII, @class + manager.Offsets.MonoClassDef_Klass + manager.Offsets.MonoClass_Name, 0x0);
-    }
+    protected override string GetName() => Manager.Helper.Process.ReadString(128, StringType.ASCII, Address + ((Mono)Manager).Offsets.klass.name, 0x0);
 
-    /// <summary>
-    /// Retrieves the namespace of this class.
-    /// </summary>
-    public string GetNamespace()
-    {
-        return manager.Helper.Process.ReadString(64, StringType.ASCII, @class + manager.Offsets.MonoClassDef_Klass + manager.Offsets.MonoClass_Namespace, 0x0);
-    }
+    protected override string GetNamespace() => Manager.Helper.Process.ReadString(64, StringType.ASCII, Address + ((Mono)Manager).Offsets.klass.namespaze, 0x0);
 
-    /// <summary>
-    /// Enumerates all fields in this class, including inherited fields,
-    /// stopping when a base class is "Object" or in the "UnityEngine" namespace.
-    /// </summary>
-    public IEnumerable<MonoField> EnumFields()
+    internal override void LoadFields()
     {
-        // Storing as local variables should be much faster than accessing properties repeatedly.
-        ProcessMemory process = manager.Helper.Process;
-        int fieldCountOffset = manager.Offsets.MonoClassDef_FieldCount;
-        int fieldsOffset = manager.Offsets.MonoClassDef_Klass + manager.Offsets.MonoClass_Fields;
-        int monoClassFieldAlignment = manager.Offsets.MonoClassFieldAlignment;
+        Mono manager = (Mono)Manager;
+
+        ProcessMemory process = Manager.Helper.Process;
+        int fieldCountOffset = manager.Offsets.klass.fieldCount;
+        int fieldsOffset = manager.Offsets.klass.fields;
+        int monoClassFieldAlignment = manager.Offsets.field.alignment;
 
         MonoClass? thisClass = this;
 
@@ -62,85 +34,85 @@ public readonly record struct MonoClass : IUnityClass<MonoClass, MonoField>
             if (thisClass is null)
                 break;
 
-            if (thisClass.Value.GetName() == "Object" || thisClass.Value.GetNamespace() == "UnityEngine")
+            if (thisClass.Name == "Object" || thisClass.Namespace == "UnityEngine")
                 break;
 
-            if (process.Read<int>(thisClass.Value.@class + fieldCountOffset, out int fieldCount) && fieldCount > 0)
+            if (process.Read<int>(thisClass.Address + fieldCountOffset, out int fieldCount) && fieldCount > 0)
             {
-                if (process.ReadPointer(thisClass.Value.@class + fieldsOffset, out IntPtr fields) && fields != IntPtr.Zero)
+                if (process.ReadPointer(thisClass.Address + fieldsOffset, out IntPtr fields) && fields != IntPtr.Zero)
                 {
                     for (int i = 0; i < fieldCount; i++)
-                        yield return new MonoField(manager, fields + i * monoClassFieldAlignment);
+                    {
+                        var fi = new MonoField(manager, fields + i * monoClassFieldAlignment);
+                        if (fi.GetOffset() is not int offset)
+                            continue;
+                        _cachedFields[fi.GetName()] = offset;
+                    }
                 }
             }
 
             // Move to parent class for next iteration.
-            thisClass = thisClass.Value.GetParent();
+            thisClass = thisClass.GetParent() as MonoClass;
         }
     }
 
-    /// <summary>
-    /// Retrieves the parent (base) class for this type, if any.
-    /// </summary>
-    public MonoClass? GetParent()
+    public override UnityClass? GetParent()
     {
-        return manager.Helper.Process.DerefOffsets(@class + manager.Offsets.MonoClassDef_Klass + manager.Offsets.MonoClass_Parent, out IntPtr value, 0, 0)
-            ? new MonoClass(manager, value)
-            : null;
-    }
+        Mono manager = (Mono)Manager;
 
-    /// <summary>
-    /// Gets the memory offset for a given field name.
-    /// Handles both standard names and auto-property backing fields.
-    /// </summary>
-    public int? GetFieldOffset(string fieldName)
-    {
-        using (var enumerator = EnumFields()
-            .Where(f => {
-                string name = f.GetName();
-                return name.EndsWith("k__BackingField")
-                    ? name == "<" + fieldName + ">k__BackingField"
-                    : name == fieldName;
-            })
-            .GetEnumerator())
+        if (!Manager.Helper.Process.DerefOffsets(Address + manager.Offsets.klass.parent, out IntPtr parentAddr, 0, 0))
+            return null;
+
+        if (!Manager.Helper.Process.ReadPointer(parentAddr + manager.Offsets.klass.image, out IntPtr imageAddr))
+            return null;
+
+        UnityImage? parentImage = Manager._cachedImages.Values.FirstOrDefault(i => i.Address == imageAddr);
+        if (parentImage is null)
         {
-            return enumerator.MoveNext()
-                ? enumerator.Current.GetOffset()
-                : null;
+            Manager.LoadAssemblies();
+            parentImage = Manager._cachedImages.Values.FirstOrDefault(i => i.Address == imageAddr);
         }
+
+        if (parentImage is null)
+            return null;
+
+        if (parentImage.GetClassByAddress(parentAddr) is UnityClass realParent)
+            return realParent;
+
+        realParent = new MonoClass(manager, parentAddr);
+        parentImage._cachedClasses.Add(realParent);
+        return realParent;
     }
 
-    /// <summary>
-    /// Retrieves the address of this class's static field table.
-    /// </summary>
-    public IntPtr? GetStaticTable()
+    public override IntPtr? GetStaticTable()
     {
-        ProcessMemory process = manager.Helper.Process;
+        Mono manager = (Mono)Manager;
 
-        if (!process.ReadPointer(@class + manager.Offsets.MonoClassDef_Klass + manager.Offsets.MonoClass_Runtime_Info, out IntPtr runtimeInfo) || runtimeInfo == IntPtr.Zero)
-            return null;
+        ProcessMemory process = Manager.Helper.Process;
 
-        if (!process.ReadPointer(runtimeInfo + manager.Offsets.MonoClassRuntimeInfo_Domain_VTables, out IntPtr vtables) || vtables == IntPtr.Zero)
-            return null;
+        if (!process.ReadPointer(Address + manager.Offsets.klass.runtimeInfo, out IntPtr runtimeInfo) || runtimeInfo == IntPtr.Zero)
+            return IntPtr.Zero;
+
+        if (!process.ReadPointer(runtimeInfo + process.PointerSize, out IntPtr vtables) || vtables == IntPtr.Zero)
+            return IntPtr.Zero;
 
         IntPtr ptr;
         if (manager.Version == MonoVersion.V1 || manager.Version == MonoVersion.V1_cattrs)
         {
-            ptr = vtables + manager.Offsets.MonoClass_VTableSize;
+            ptr = vtables + manager.Offsets.klass.vtableSize;
         }
         else
         {
-            vtables += manager.Offsets.MonoVTable_VTable;
+            vtables += manager.Offsets.vtable.vtable;
 
-            if (!process.Read<int>(@class + manager.Offsets.MonoClassDef_Klass + manager.Offsets.MonoClass_VTableSize, out int vtable_size) || vtable_size == 0)
-                return null;
+            if (!process.Read<int>(Address + manager.Offsets.klass.vtableSize, out int vtable_size) || vtable_size == 0)
+                return IntPtr.Zero;
 
             ptr = vtables + vtable_size * process.PointerSize;
         }
 
-        if (!process.ReadPointer(ptr, out IntPtr addr) || ptr == IntPtr.Zero)
-            return null;
-
-        return addr;
+        return Manager.Helper.Process.ReadPointer(ptr, out IntPtr value)
+            ? value
+            : null;
     }
 }

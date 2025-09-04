@@ -6,18 +6,48 @@ using System.Linq;
 
 namespace JHelper.UnityManagers.SceneManager;
 
+/// <summary>
+/// Provides access to Unity's <c>SceneManager</c>
+/// by reading from the UnityPlayer module in memory.
+/// 
+/// This class allows retrieval of the currently active scene,
+/// the <c>DontDestroyOnLoad</c> scene, all loaded scenes,
+/// and scene metadata such as index and path.
+/// </summary>
 public partial class SceneManager
 {
+    /// <summary>
+    /// Reference to the parent Unity helper
+    /// </summary>
 #if LIVESPLIT
     internal readonly global::Unity helper;
 #else
     internal readonly JHelper.Unity helper;
 #endif
 
+    /// <summary>
+    /// Indicates whether the game is running under IL2CPP.
+    /// </summary>
     internal readonly bool isIL2CPP;
+
+    /// <summary>
+    /// Base memory address of the Unity SceneManager instance.
+    /// </summary>
     private readonly IntPtr baseAddress;
+
+    /// <summary>
+    /// Offsets used for resolving SceneManager-related fields.
+    /// </summary>
     internal readonly SceneManagerOffsets offsets;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SceneManager"/> class,
+    /// scanning UnityPlayer.dll for the SceneManager base address.
+    /// </summary>
+    /// <param name="helper">The parent Unity helper.</param>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown if the SceneManager address cannot be found or resolved.
+    /// </exception>
 #if LIVESPLIT
     public SceneManager(global::Unity helper)
 #else
@@ -35,6 +65,7 @@ public partial class SceneManager
         this.isIL2CPP = helper.MonoType == JHelper.Unity.MonoTypeEnum.IL2CPP;
 #endif
 
+        // Retrieve UnityPlayer.dll module.
         ProcessModule unityPlayer = process.Modules["UnityPlayer.dll"];
 
         IntPtr ptr;
@@ -66,21 +97,41 @@ public partial class SceneManager
             throw new ArgumentNullException("Address", "Could not find the scene manager");
     }
 
+    /// <summary>
+    /// Gets the currently active scene.
+    /// </summary>
     public Scene Current
     {
         get => new(this, helper.Process.ReadPointer(baseAddress + offsets.activeScene));
     }
 
+    /// <summary>
+    /// Gets the <c>DontDestroyOnLoad</c> scene.
+    /// This scene persists across scene changes.
+    /// </summary>
     public Scene DontDestroyOnLoad
     {
         get => new(this, baseAddress + offsets.dontDestroyOnLoadScene);
     }
 
+    /// <summary>
+    /// Gets the index of the currently active scene.
+    /// </summary>
     public int CurrentSceneIndex => Current.Index;
+
+    /// <summary>
+    /// Gets the path of the currently active scene.
+    /// </summary>
     public string CurrentScenePath => Current.Path;
 
+    /// <summary>
+    /// Gets the total number of loaded scenes.
+    /// </summary>
     public int SceneCount => helper.Process.Read<int>(baseAddress + offsets.sceneCount);
 
+    /// <summary>
+    /// Enumerates all currently loaded scenes.
+    /// </summary>
     public IEnumerable<Scene> Scenes
     {
         get
@@ -95,8 +146,8 @@ public partial class SceneManager
             {
                 Span<T> buf = stackalloc T[3];
                 process.ReadArray<T>(baseAddress + offsets.sceneCount, buf);
-                int numScenes = ToInt(buf[0]);;
-                IntPtr addr = ToIntPtr(buf[2]);
+                int numScenes = Unsafe.ToInt(buf[0]);;
+                IntPtr addr = Unsafe.ToIntPtr(buf[2]);
 
                 T[] scenes = ArrayPool<T>.Shared.Rent(numScenes);
                 try
@@ -106,26 +157,15 @@ public partial class SceneManager
 
                     for (int i = 0; i < numScenes; i++)
                     {
-                        if (ToIntPtr(scenes[i]) == IntPtr.Zero)
+                        var saddr = Unsafe.ToIntPtr(scenes[i]);
+                        if (saddr == IntPtr.Zero)
                             continue;
-                        yield return new Scene(this, ToIntPtr(scenes[i]));
+                        yield return new Scene(this, saddr);
                     }
                 }
                 finally
                 {
                     ArrayPool<T>.Shared.Return(scenes);
-                }
-
-
-                unsafe int ToInt(T value) => *(int*)&value;
-                unsafe IntPtr ToIntPtr(T value)
-                {
-                    if (typeof(T) == typeof(int))
-                        return (IntPtr)(*(long*)&value);
-                    else if (typeof(T) == typeof(long))
-                        return (IntPtr)(*(int*)&value);
-                    else
-                        throw new InvalidOperationException($"Unsupported type {typeof(T)} for conversion to IntPtr.");
                 }
             }
         }

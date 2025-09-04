@@ -8,16 +8,30 @@ using System.Linq;
 
 namespace JHelper.UnityManagers.SceneManager;
 
+/// <summary>
+/// Represents a Unity Transform component in a scene.
+/// Provides access to the game object's name, children, and attached class instances.
+/// </summary>
+/// <param name="manager">
+/// The <see cref="SceneManager"/> instance that owns this transform.
+/// </param>
+/// <param name="address">
+/// The memory address of the transform in the Unity process.
+/// </param>
 public readonly record struct Transform(SceneManager manager, IntPtr address)
 {
     private readonly IntPtr address = address;
     private readonly SceneManager sceneManager = manager;
 
-    public string Name
-    {
-        get => sceneManager.helper.Process.ReadString(128, StringType.AutoDetect, address + sceneManager.offsets.gameObject, sceneManager.offsets.gameObjectName, 0);
-    }
+    /// <summary>
+    /// Gets the name of the game object associated with this transform.
+    /// </summary>
+    public string Name => sceneManager.helper.Process.ReadString(128, StringType.AutoDetect, address + sceneManager.offsets.gameObject, sceneManager.offsets.gameObjectName, 0);
 
+    /// <summary>
+    /// Enumerates all direct child transforms of this transform.
+    /// </summary>
+    /// <returns>An <see cref="IEnumerable{Transform}"/> of child transforms.</returns>
     public IEnumerable<Transform> EnumChildren()
     {
         ProcessMemory process = sceneManager.helper.Process;
@@ -62,6 +76,11 @@ public readonly record struct Transform(SceneManager manager, IntPtr address)
         }
     }
 
+    /// <summary>
+    /// Gets a direct child Transform by name.
+    /// </summary>
+    /// <param name="name">The name of the child game object to find.</param>
+    /// <returns>The <see cref="Transform"/> if found; otherwise <c>null</c>.</returns>
     public Transform? GetChild(string name)
     {
         using (var enumerator = EnumChildren().Where(c => c.Name == name).GetEnumerator())
@@ -72,6 +91,10 @@ public readonly record struct Transform(SceneManager manager, IntPtr address)
         }
     }
 
+    /// <summary>
+    /// Enumerates all class instances (components) attached to this transform's game object.
+    /// </summary>
+    /// <returns>An <see cref="IEnumerable{IntPtr}"/> of component memory addresses.</returns>
     public IEnumerable<IntPtr> EnumClasses()
     {
         IntPtr addr = address;
@@ -121,15 +144,19 @@ public readonly record struct Transform(SceneManager manager, IntPtr address)
         }
     }
 
+    /// <summary>
+    /// Gets the instance of a class attached to this transform by its name.
+    /// </summary>
+    /// <param name="name">The name of the class (component) to find.</param>
+    /// <returns>The memory address of the class instance if found; otherwise <c>null</c>.</returns>
     public IntPtr? GetClassInstance(string name)
     {
         bool isIL2CPP = sceneManager.isIL2CPP;
         var manager = sceneManager;
-        var baseAddress = address;
 
         using (var enumerator = EnumClasses().Where(c => isIL2CPP
-            ? manager.helper.Process.ReadString(128, baseAddress, 2 * manager.helper.Process.PointerSize, 0) == name
-            : manager.helper.Process.ReadString(128, baseAddress, 0, manager.offsets.klassName, 0) == name)
+            ? manager.helper.Process.ReadString(128, c, 2 * manager.helper.Process.PointerSize, 0) == name
+            : manager.helper.Process.ReadString(128, c, 0, manager.offsets.klassName, 0) == name)
             .GetEnumerator())
         {
             return enumerator.MoveNext()

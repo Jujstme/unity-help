@@ -8,6 +8,12 @@ namespace JHelper.UnityManagers.SceneManager;
 
 public readonly partial record struct Scene
 {
+    /// <summary>
+    /// Enumerates all root-level game objects in the scene.
+    /// </summary>
+    /// <returns>
+    /// An <see cref="IEnumerable{Transform}"/> containing all root game objects.
+    /// </returns>
     public IEnumerable<Transform> EnumRootGameObjects()
     {
         ProcessMemory process = manager.helper.Process;
@@ -50,6 +56,14 @@ public readonly partial record struct Scene
         }
     }
 
+    /// <summary>
+    /// Retrieves a root-level game object by its name.
+    /// </summary>
+    /// <param name="name">The name of the root game object to find.</param>
+    /// <returns>
+    /// The <see cref="Transform"/> if a root game object with the specified name exists;
+    /// otherwise <c>null</c>.
+    /// </returns>
     public Transform? GetRootGameObject(string name)
     {
         using (var enumerator = EnumRootGameObjects().Where(t => t.Name == name).GetEnumerator())

@@ -7,12 +7,6 @@ namespace JHelper;
 public partial class Unity
 {
     /// <summary>
-    /// Cached result of the detected Unity runtime type (Mono or IL2CPP).
-    /// Defaults to <see cref="MonoTypeEnum.Undefined"/> until detection is performed.
-    /// </summary>
-    private MonoTypeEnum _monoType = MonoTypeEnum.Undefined;
-
-    /// <summary>
     /// Gets the detected runtime type of the hooked Unity game.
     /// Detection is performed on first access by checking for the presence of
     /// <c>GameAssembly.dll</c> in the same directory as the game's executable.
@@ -22,17 +16,22 @@ public partial class Unity
     {
         get
         {
-            if (_monoType == MonoTypeEnum.Undefined)
+            if (field == MonoTypeEnum.Undefined)
             {
                 string processPath = Process.MainModule.FileName;
                 string gameassemblyPath = processPath[0..(processPath.LastIndexOf('\\') + 1)] + "GameAssembly.dll";
 
-                _monoType = File.Exists(gameassemblyPath)
+                field = File.Exists(gameassemblyPath)
                     ? MonoTypeEnum.IL2CPP
                     : MonoTypeEnum.Mono;
             }
 
-            return _monoType;
+            return field;
+        }
+
+        private set
+        {
+            field = value;
         }
     }
 

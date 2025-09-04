@@ -1,6 +1,6 @@
 ﻿using JHelper.Common.MemoryUtils;
 using JHelper.Common.ProcessInterop;
-using JHelper.UnityManagers.Interfaces;
+using JHelper.UnityManagers.Abstractions;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -8,25 +8,8 @@ using System.Linq;
 
 namespace JHelper.UnityManagers.IL2CPP;
 
-/// <summary>
-/// Provides access to IL2CPP-specific memory structures for a hooked Unity process.
-/// Handles version detection, memory offset resolution, and retrieval of assemblies and images.
-/// </summary>
-/// <remarks>
-/// This class reads metadata and runtime information directly from the target process's memory.
-/// It relies on <see cref="IL2CPPOffsets"/> for correct structure layout per Unity/IL2CPP version.
-/// </remarks>
-public partial class IL2CPP : UnityManager<IL2CPPAssembly, IL2CPPClass, IL2CPPImage, IL2CPPField>
+public partial class IL2CPP : UnityManager
 {
-    /// <summary>
-    /// The parent Unity helper instance that owns this IL2CPP manager.
-    /// </summary>
-#if LIVESPLIT
-    internal global::Unity Helper;
-#else
-    internal Unity Helper;
-#endif
-
     /// <summary>
     /// The detected IL2CPP metadata structure version.
     /// </summary>
@@ -102,18 +85,16 @@ public partial class IL2CPP : UnityManager<IL2CPPAssembly, IL2CPPClass, IL2CPPIm
             throw new Exception("Failed while trying to resolve IL2CPP assemblies (TypeInfoDefinitionTable).");
     }
 
-    /// <summary>
-    /// Enumerates all assemblies currently loaded in IL2CPP.
-    /// </summary>
-    public override IEnumerable<IL2CPPAssembly> GetAssemblies()
+    public override void LoadAssemblies()
     {
         ProcessMemory process = Helper.Process;
 
-        return process.Is64Bit
-            ? GetAssembliesInternal<long>()
-            : GetAssembliesInternal<int>();
+        if (process.Is64Bit)
+            GetAssembliesInternal<long>();
+        else
+            GetAssembliesInternal<int>();
 
-        IEnumerable<IL2CPPAssembly> GetAssembliesInternal<T>() where T : unmanaged
+        void GetAssembliesInternal<T>() where T : unmanaged
         {
             int count = 0;
             IntPtr assemblies = IntPtr.Zero;
@@ -122,7 +103,7 @@ public partial class IL2CPP : UnityManager<IL2CPPAssembly, IL2CPPClass, IL2CPPIm
             {
                 Span<T> buf = buffer.Span;
                 if (!process.ReadArray<T>(Assemblies, buf))
-                    yield break;
+                    return;
                  
                 assemblies = Unsafe.ToIntPtr(buf[0]);
                 count = (int)(((nint)Unsafe.ToIntPtr(buf[1]) - assemblies) / process.PointerSize);
@@ -130,19 +111,27 @@ public partial class IL2CPP : UnityManager<IL2CPPAssembly, IL2CPPClass, IL2CPPIm
             }
 
             if (count == 0 || assemblies == IntPtr.Zero)
-                yield break;
+                return;
 
             T[] addresses = ArrayPool<T>.Shared.Rent(count);
             try
             {
                 if (!process.ReadArray(assemblies, addresses.AsSpan(0, count)))
-                    yield break;
+                    return;
 
                 for (int i = 0; i < count; i++)
                 {
                     IntPtr assembly = Unsafe.ToIntPtr(addresses[i]);
                     if (assembly != IntPtr.Zero)
-                        yield return new IL2CPPAssembly(this, assembly);
+                    {
+                        var newAssembly = new IL2CPPAssembly(this, assembly);
+                        var image = newAssembly.GetImage();
+
+                        if (image is null || _cachedImages.Any(i => i.Value.Address == image.Address))
+                            continue;
+                        image.Name = newAssembly.GetName();
+                        _cachedImages[image.Name] = image;
+                    }
                 }
             }
             finally

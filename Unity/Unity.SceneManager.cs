@@ -10,20 +10,18 @@ namespace JHelper;
 
 public partial class Unity
 {
-    private SceneManager? _sceneManager;
-
     public SceneManager SceneManager
     {
         get
         {
-            if (_sceneManager is null)
+            if (field is null)
             {
                 // Letting the code retry 5 times before throwing
                 for (int i = 0; i < Globals.HookRetryAttempts; i++)
                 {
                     try
                     {
-                        _sceneManager = new(this);
+                        field = new(this);
                         break;
                     }
                     catch
@@ -32,13 +30,18 @@ public partial class Unity
                     }
                 }
 
-                if (_sceneManager is null)
+                if (field is null)
                     throw new InvalidOperationException("Failed to load the SceneManager.");
 
                 Log.Info($"  => Scene Manager loaded");
             }
 
-            return _sceneManager;
+            return field;
+        }
+
+        private set
+        {
+            field = value;
         }
     }
 }

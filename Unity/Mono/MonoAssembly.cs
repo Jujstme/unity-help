@@ -1,24 +1,15 @@
 ﻿using JHelper.Common.ProcessInterop;
 using JHelper.Common.ProcessInterop.API;
-using JHelper.UnityManagers.Interfaces;
+using JHelper.UnityManagers.Abstractions;
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Linq;
 
 namespace JHelper.UnityManagers.Mono;
 
-/// <summary>
-/// Represents a loaded Mono assembly within a hooked Unity process.
-/// Provides access to the assembly's name and its <see cref="MonoImage"/>.
-/// </summary>
-public readonly record struct MonoAssembly : IUnityAssembly<MonoImage, MonoClass, MonoField>
+public readonly record struct MonoAssembly : IUnityAssembly
 {
-    /// <summary>
-    /// The memory address of the assembly in the target process.
-    /// </summary>
     internal readonly IntPtr assembly;
-
     private readonly Mono manager;
 
     internal MonoAssembly(Mono manager, IntPtr address)
@@ -27,70 +18,48 @@ public readonly record struct MonoAssembly : IUnityAssembly<MonoImage, MonoClass
         assembly = address;
     }
 
-    /// <summary>
-    /// Reads the assembly's name from memory.
-    /// </summary>
     public string GetName()
     {
-        return manager.Helper.Process.ReadString(128, StringType.ASCII, assembly + manager.Offsets.MonoAssembly_Aname, 0);
+        return manager.Helper.Process.ReadString(128, StringType.ASCII, assembly + manager.Offsets.assembly.aname, 0);
     }
 
-    /// <summary>
-    /// Retrieves the <see cref="MonoImage"/> associated with this assembly.
-    /// </summary>
-    public MonoImage? GetImage()
+    public UnityImage? GetImage()
     {
-        if (!manager.Helper.Process.ReadPointer(assembly + manager.Offsets.MonoAssembly_Image, out IntPtr value) || value == IntPtr.Zero)
+        if (!manager.Helper.Process.ReadPointer(assembly + manager.Offsets.assembly.image, out IntPtr value) || value == IntPtr.Zero)
             return null;
 
         return new MonoImage(manager, value);
     }
 }
 
-/// <summary>
-/// Represents a Mono image.
-/// Contains metadata and references to <see cref="MonoClass"/> instances.
-/// </summary>
-public readonly record struct MonoImage : IUnityImage<MonoClass, MonoField>
+public class MonoImage : UnityImage
 {
-    /// <summary>
-    /// The memory address of the image in the target process.
-    /// </summary>
-    internal readonly IntPtr image;
-
-    private readonly Mono manager;
-
     internal MonoImage(Mono manager, IntPtr address)
     {
-        this.manager = manager;
-        image = address;
+        Manager = manager;
+        Address = address;
     }
 
-    /// <summary>
-    /// Enumerates all classes in the image by reading Mono's internal class cache table.
-    /// </summary>
-    /// <remarks>
-    /// The Mono internal hashtable stores linked lists of classes in buckets.
-    /// We iterate through each bucket and traverse linked lists until no more entries are found.
-    /// </remarks>
-    public IEnumerable<MonoClass> EnumClasses()
+    internal override void LoadClasses()
     {
-        // Defining locals as they are generally faster to access
-        ProcessMemory process = manager.Helper.Process;
-        IntPtr image = this.image;
-        int nextClassCache = manager.Offsets.MonoClassDef_NextClassCache;
+        Mono manager = (Mono)Manager;
 
-        return process.Is64Bit
-            ? EnumClassesInternal<long>(manager)
-            : EnumClassesInternal<int>(manager);
+        ProcessMemory process = Manager.Helper.Process;
+        IntPtr image = Address;
+        int nextClassCache = manager.Offsets.klass.nextClassCache;
 
-        IEnumerable<MonoClass> EnumClassesInternal<T>(Mono manager) where T : unmanaged
+        if (process.Is64Bit)
+            EnumClassesInternal<long>(manager);
+        else
+            EnumClassesInternal<int>(manager);
+
+        void EnumClassesInternal<T>(Mono manager) where T : unmanaged
         {
-            if (!process.Read<int>(image + manager.Offsets.MonoImage_ClassCache + manager.Offsets.MonoInternalHashtable_size, out int classCacheSize) || classCacheSize == 0)
-                yield break;
+            if (!process.Read<int>(image + manager.Offsets.image.classCache + manager.Offsets.hashTable.size, out int classCacheSize) || classCacheSize == 0)
+                return;
 
-            if (!process.ReadPointer(image + manager.Offsets.MonoImage_ClassCache + manager.Offsets.MonoInternalHashtable_table, out IntPtr tableAddr) || tableAddr == IntPtr.Zero)
-                yield break;
+            if (!process.ReadPointer(image + manager.Offsets.image.classCache + manager.Offsets.hashTable.size, out IntPtr tableAddr) || tableAddr == IntPtr.Zero)
+                return;
 
             T[] buf = ArrayPool<T>.Shared.Rent(classCacheSize);
             try
@@ -108,7 +77,9 @@ public readonly record struct MonoImage : IUnityImage<MonoClass, MonoField>
 
                             if (klass == IntPtr.Zero)
                                 break;
-                            yield return new MonoClass(manager, klass);
+
+                            if (!_cachedClasses.Any(k => k.Address == klass))
+                                _cachedClasses.Add(new MonoClass(manager, klass));
 
                             if (!process.ReadPointer(table + nextClassCache, out table) || table == IntPtr.Zero)
                                 break;
@@ -120,21 +91,6 @@ public readonly record struct MonoImage : IUnityImage<MonoClass, MonoField>
             {
                 ArrayPool<T>.Shared.Return(buf);
             }
-        }
-    }
-
-    /// <summary>
-    /// Retrieves the class with the specified name from the image.
-    /// Returns null if the class is not found.
-    /// </summary>
-    /// <param name="className">The name of the class to find.</param>
-    public MonoClass? GetClass(string className)
-    {
-        using (IEnumerator<MonoClass> enumerator = EnumClasses().Where(c => c.GetName() == className).GetEnumerator())
-        {
-            return enumerator.MoveNext()
-                ? enumerator.Current
-                : null;
         }
     }
 }

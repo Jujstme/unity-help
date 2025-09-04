@@ -1,5 +1,6 @@
 ﻿using JHelper.Common.ProcessInterop;
 using JHelper.HelperBase;
+using System;
 
 #if !LIVESPLIT
 namespace JHelper;
@@ -17,7 +18,12 @@ public partial class Unity : JHelper.HelperBase.HelperBase
     /// Initializes a new instance of the <see cref="Unity"/> helper
     /// </summary>
     public Unity()
-        : this(true) { }
+        : this(true)
+    {
+        MonoType = MonoTypeEnum.Undefined;
+        Manager = null!;
+        SceneManager = null!;
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Unity"/> helper,
@@ -27,7 +33,12 @@ public partial class Unity : JHelper.HelperBase.HelperBase
     /// <c>true</c> to enable code generation; <c>false</c> to disable it.
     /// </param>
     public Unity(bool generateCode)
-        : base(generateCode) { }
+        : base(generateCode)
+    {
+        MonoType = MonoTypeEnum.Undefined;
+        Manager = null!;
+        SceneManager = null!;
+    }
 #else
     /// <summary>
     /// Initializes a new instance of the <see cref="Unity"/> helper
@@ -40,17 +51,11 @@ public partial class Unity : JHelper.HelperBase.HelperBase
 
 #endif
 
-    public void SetUnityVersion(int major, int minor)
-    {
-        if (MonoType == MonoTypeEnum.IL2CPP)
-            IL2CPP = new JHelper.UnityManagers.IL2CPP.IL2CPP(this, JHelper.UnityManagers.IL2CPP.IL2CPP.ForceVersion(major, minor));
-    }
-
     public override void Dispose()
     {
-        _monoType = MonoTypeEnum.Undefined;
-        IL2CPP = null!;
-        Mono = null!;
+        MonoType = MonoTypeEnum.Undefined;
+        Manager = null!;
+        SceneManager = null!;
         base.Dispose();
     }
 }

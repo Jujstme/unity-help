@@ -20,13 +20,19 @@ public partial class Mono
             // If such pointer matches the address to the assembly image instead, then it's V1Cattrs.
             // The idea is taken from https://github.com/Voxelse/Voxif/blob/main/Voxif.Helpers/Voxif.Helpers.UnityHelper/UnityHelper.cs#L343-L344
             Mono module = new(helper, MonoVersion.V1);
-            MonoImage image = module.GetDefaultImage().GetValueOrDefault();
-            MonoClass @class = image.EnumClasses().First();
 
-            if (!helper.Process.ReadPointer(@class.@class + module.Offsets.MonoClass_Name, out IntPtr ptr))
-                throw new Exception("Unable to identify the version of the Mono struct used by the game");
+            if (module.GetDefaultImage() is not MonoImage image)
+                throw new InvalidOperationException("Unable to identify the version of the Mono struct used by the game");
 
-            return ptr == image.image ? MonoVersion.V1_cattrs : MonoVersion.V1;
+            image.LoadClasses();
+
+            if (image._cachedClasses.First() is not MonoClass @class)
+                throw new InvalidOperationException("Unable to identify the version of the Mono struct used by the game");
+
+            if (!helper.Process.ReadPointer(@class.Address + module.Offsets.klass.name, out IntPtr ptr))
+                throw new InvalidOperationException("Unable to identify the version of the Mono struct used by the game");
+
+            return ptr == image.Address ? MonoVersion.V1_cattrs : MonoVersion.V1;
         }
 
         ProcessModule UnityPlayer = helper.Process.Modules["UnityPlayer.dll"];

@@ -1,211 +1,146 @@
 ﻿using JHelper.Common.ProcessInterop;
+using System;
 
 namespace JHelper.UnityManagers.Mono;
 
-public readonly struct MonoOffsets
+internal class MonoOffsets
 {
-    internal readonly byte MonoAssembly_Aname;
-    internal readonly byte MonoAssembly_Image;
-    internal readonly short MonoImage_ClassCache;
-    internal readonly byte MonoInternalHashtable_table;
-    internal readonly byte MonoInternalHashtable_size;
-    internal readonly short MonoClassDef_NextClassCache;
-    internal readonly byte MonoClassDef_Klass;
-    internal readonly byte MonoClass_Name;
-    internal readonly byte MonoClass_Namespace;
-    internal readonly byte MonoClass_Fields;
-    internal readonly short MonoClassDef_FieldCount;
-    internal readonly short MonoClass_Runtime_Info;
-    internal readonly byte MonoClass_VTableSize;
-    internal readonly byte MonoClass_Parent;
-    internal readonly byte MonoClassField_Name;
-    internal readonly byte MonoClassField_Offset;
-    internal readonly byte MonoClassRuntimeInfo_Domain_VTables;
-    internal readonly byte MonoVTable_VTable;
-    internal readonly byte MonoClassFieldAlignment;
+    internal readonly Assembly assembly;
+    internal readonly Image image;
+    internal readonly HashTable hashTable;
+    internal readonly Class klass;
+    internal readonly FieldInfo field;
+    internal readonly MonoVTable vtable;
+
+    internal readonly struct Assembly(byte aname, byte image)
+    {
+        internal readonly byte aname = aname;
+        internal readonly byte image = image;
+    }
+
+    internal readonly struct Image(short classCache)
+    {
+        internal readonly short classCache = classCache;
+    }
+
+    internal readonly struct HashTable(byte size, byte table)
+    {
+        internal readonly byte size = size;
+        internal readonly byte table = table;
+    }
+
+    internal readonly struct Class(byte parent, byte image, byte name, byte namespaze, byte vtableSize, byte fields, short runtimeInfo, short fieldCount, short nextClassCache)
+    {
+        internal readonly byte parent = parent;
+        internal readonly byte image = image;
+        internal readonly byte name = name;
+        internal readonly byte namespaze = namespaze;
+        internal readonly byte vtableSize = vtableSize;  // On mono V1 and V1_cattrs, this offset represents MonoVTable.data
+        internal readonly byte fields = fields;
+        internal readonly short runtimeInfo = runtimeInfo;
+        internal readonly short fieldCount = fieldCount;
+        internal readonly short nextClassCache = nextClassCache;
+    }
+
+    internal readonly struct FieldInfo(byte name, byte offset, byte alignment)
+    {
+        internal readonly byte name = name;
+        internal readonly byte offset = offset;
+        internal readonly byte alignment = alignment;
+    }
+
+
+    internal readonly struct MonoVTable(byte vtable)
+    {
+        internal readonly byte vtable = vtable;
+    }
 
     internal MonoOffsets(MonoVersion version, ProcessMemory process)
     {
         if (process.Is64Bit)
         {
-            if (version == MonoVersion.V1)
+            if (version == MonoVersion.V3)
             {
-                MonoAssembly_Aname = 0x10;
-                MonoAssembly_Image = 0x58;
-                MonoImage_ClassCache = 0x3D0;
-                MonoInternalHashtable_table = 0x20;
-                MonoInternalHashtable_size = 0x18;
-                MonoClassDef_NextClassCache = 0x100;
-                MonoClassDef_Klass = 0x0;
-                MonoClass_Name = 0x48;
-                MonoClass_Namespace = 0x50;
-                MonoClass_Fields = 0xA8;
-                MonoClassDef_FieldCount = 0x94;
-                MonoClass_Runtime_Info = 0xF8;
-                MonoClass_VTableSize = 0x18; // MonoVTable.data
-                MonoClass_Parent = 0x30;
-                MonoClassField_Name = 0x8;
-                MonoClassField_Offset = 0x18;
-                MonoClassRuntimeInfo_Domain_VTables = 0x8;
-                MonoVTable_VTable = 0x48;
-                MonoClassFieldAlignment = 0x20;
-            }
-            else if (version == MonoVersion.V1_cattrs)
-            {
-                MonoAssembly_Aname = 0x10;
-                MonoAssembly_Image = 0x58;
-                MonoImage_ClassCache = 0x3D0;
-                MonoInternalHashtable_table = 0x20;
-                MonoInternalHashtable_size = 0x18;
-                MonoClassDef_NextClassCache = 0x108;
-                MonoClassDef_Klass = 0x0;
-                MonoClass_Name = 0x50;
-                MonoClass_Namespace = 0x58;
-                MonoClass_Fields = 0xB0;
-                MonoClassDef_FieldCount = 0x9C;
-                MonoClass_Runtime_Info = 0x100;
-                MonoClass_VTableSize = 0x18; // MonoVTable.data
-                MonoClass_Parent = 0x30;
-                MonoClassField_Name = 0x8;
-                MonoClassField_Offset = 0x18;
-                MonoClassRuntimeInfo_Domain_VTables = 0x8;
-                MonoVTable_VTable = 0x48;
-                MonoClassFieldAlignment = 0x20;
+                assembly = new(0x10, 0x60);
+                image = new(0x4D0);
+                hashTable = new(0x18, 0x20);
+                klass = new(0x30, 0x40, 0x48, 0x50, 0x5C, 0x98, 0xD0, 0x100, 0x108);
+                field = new(0x8, 0x18, 0x20);
+                vtable = new(0x48);
             }
             else if (version == MonoVersion.V2)
             {
-                MonoAssembly_Aname = 0x10;
-                MonoAssembly_Image = 0x60;
-                MonoImage_ClassCache = 0x4C0;
-                MonoInternalHashtable_table = 0x20;
-                MonoInternalHashtable_size = 0x18;
-                MonoClassDef_NextClassCache = 0x108;
-                MonoClassDef_Klass = 0x0;
-                MonoClass_Name = 0x48;
-                MonoClass_Namespace = 0x50;
-                MonoClass_Fields = 0x98;
-                MonoClassDef_FieldCount = 0x100;
-                MonoClass_Runtime_Info = 0xD0;
-                MonoClass_VTableSize = 0x5C;
-                MonoClass_Parent = 0x30;
-                MonoClassField_Name = 0x8;
-                MonoClassField_Offset = 0x18;
-                MonoClassRuntimeInfo_Domain_VTables = 0x8;
-                MonoVTable_VTable = 0x40;
-                MonoClassFieldAlignment = 0x20;
+                assembly = new(0x10, 0x60);
+                image = new(0x4C0);
+                hashTable = new(0x18, 0x20);
+                klass = new(0x30, 0x40, 0x48, 0x50, 0x5C, 0x98, 0xD0, 0x100, 0x108);
+                field = new(0x8, 0x18, 0x20);
+                vtable = new(0x40);
+            }
+            else if (version == MonoVersion.V1_cattrs)
+            {
+                assembly = new(0x10, 0x58);
+                image = new(0x3D0);
+                hashTable = new(0x18, 0x20);
+                klass = new(0x30, 0x48, 0x50, 0x58, 0x18, 0xB0, 0x100, 0x9C, 0x108);
+                field = new(0x8, 0x18, 0x20);
+                vtable = new(0x48);
+            }
+            else if (version == MonoVersion.V1)
+            {
+                assembly = new(0x10, 0x58);
+                image = new(0x3D0);
+                hashTable = new(0x18, 0x20);
+                klass = new(0x30, 0x40, 0x48, 0x50, 0x18, 0xA8, 0xF8, 0x94, 0x100);
+                field = new(0x8, 0x18, 0x20);
+                vtable = new(0x48);
             }
             else
             {
-                MonoAssembly_Aname = 0x10;
-                MonoAssembly_Image = 0x60;
-                MonoImage_ClassCache = 0x4D0;
-                MonoInternalHashtable_table = 0x20;
-                MonoInternalHashtable_size = 0x18;
-                MonoClassDef_NextClassCache = 0x108;
-                MonoClassDef_Klass = 0x0;
-                MonoClass_Name = 0x48;
-                MonoClass_Namespace = 0x50;
-                MonoClass_Fields = 0x98;
-                MonoClassDef_FieldCount = 0x100;
-                MonoClass_Runtime_Info = 0xD0;
-                MonoClass_VTableSize = 0x5C;
-                MonoClass_Parent = 0x30;
-                MonoClassField_Name = 0x8;
-                MonoClassField_Offset = 0x18;
-                MonoClassRuntimeInfo_Domain_VTables = 0x8;
-                MonoVTable_VTable = 0x48;
-                MonoClassFieldAlignment = 0x20;
+                throw new InvalidOperationException();
             }
         }
         else
         {
-            if (version == MonoVersion.V1)
+            if (version == MonoVersion.V3)
             {
-                MonoAssembly_Aname = 0x8;
-                MonoAssembly_Image = 0x40;
-                MonoImage_ClassCache = 0x2A0;
-                MonoInternalHashtable_table = 0x14;
-                MonoInternalHashtable_size = 0xC;
-                MonoClassDef_NextClassCache = 0xA8;
-                MonoClassDef_Klass = 0x0;
-                MonoClass_Name = 0x30;
-                MonoClass_Namespace = 0x34;
-                MonoClass_Fields = 0x74;
-                MonoClassDef_FieldCount = 0x64;
-                MonoClass_Runtime_Info = 0xA4;
-                MonoClass_VTableSize = 0xC; // MonoVTable.data
-                MonoClass_Parent = 0x24;
-                MonoClassField_Name = 0x4;
-                MonoClassField_Offset = 0xC;
-                MonoClassRuntimeInfo_Domain_VTables = 0x4;
-                MonoVTable_VTable = 0x28;
-                MonoClassFieldAlignment = 0x10;
-            }
-            else if (version == MonoVersion.V1_cattrs)
-            {
-                MonoAssembly_Aname = 0x8;
-                MonoAssembly_Image = 0x40;
-                MonoImage_ClassCache = 0x2A0;
-                MonoInternalHashtable_table = 0x14;
-                MonoInternalHashtable_size = 0xC;
-                MonoClassDef_NextClassCache = 0xAC;
-                MonoClassDef_Klass = 0x0;
-                MonoClass_Name = 0x34;
-                MonoClass_Namespace = 0x38;
-                MonoClass_Fields = 0x78;
-                MonoClassDef_FieldCount = 0x68;
-                MonoClass_Runtime_Info = 0xA8;
-                MonoClass_VTableSize = 0xC; // MonoVTable.data
-                MonoClass_Parent = 0x24;
-                MonoClassField_Name = 0x4;
-                MonoClassField_Offset = 0xC;
-                MonoClassRuntimeInfo_Domain_VTables = 0x4;
-                MonoVTable_VTable = 0x28;
-                MonoClassFieldAlignment = 0x10;
+                assembly = new(0x8, 0x48);
+                image = new(0x35C);
+                hashTable = new(0x0C, 0x14);
+                klass = new(0x20, 0x28, 0x2C, 0x30, 0x38, 0x60, 0x7C, 0x9C, 0xA0);
+                field = new(0x4, 0xC, 0x10);
+                vtable = new(0x2C);
             }
             else if (version == MonoVersion.V2)
             {
-                MonoAssembly_Aname = 0x8;
-                MonoAssembly_Image = 0x44;
-                MonoImage_ClassCache = 0x354;
-                MonoInternalHashtable_table = 0x14;
-                MonoInternalHashtable_size = 0xC;
-                MonoClassDef_NextClassCache = 0xA8;
-                MonoClassDef_Klass = 0x0;
-                MonoClass_Name = 0x2C;
-                MonoClass_Namespace = 0x30;
-                MonoClass_Fields = 0x60;
-                MonoClassDef_FieldCount = 0xA4;
-                MonoClass_Runtime_Info = 0x84;
-                MonoClass_VTableSize = 0x38;
-                MonoClass_Parent = 0x20;
-                MonoClassField_Name = 0x4;
-                MonoClassField_Offset = 0xC;
-                MonoClassRuntimeInfo_Domain_VTables = 0x4;
-                MonoVTable_VTable = 0x28;
-                MonoClassFieldAlignment = 0x10;
+                assembly = new(0x8, 0x44);
+                image = new(0x354);
+                hashTable = new(0x0C, 0x14);
+                klass = new(0x20, 0x28, 0x2C, 0x30, 0x38, 0x60, 0x84, 0xA4, 0xA8);
+                field = new(0x4, 0xC, 0x10);
+                vtable = new(0x28);
+            }
+            else if (version == MonoVersion.V1_cattrs)
+            {
+                assembly = new(0x8, 0x40);
+                image = new(0x2A0);
+                hashTable = new(0x0C, 0x14);
+                klass = new(0x24, 0x30, 0x34, 0x38, 0xC, 0x78, 0xA8, 0x68, 0xAC);
+                field = new(0x4, 0xC, 0x10);
+                vtable = new(0x28);
+            }
+            else if (version == MonoVersion.V1)
+            {
+                assembly = new(0x8, 0x40);
+                image = new(0x2A0);
+                hashTable = new(0x0C, 0x14);
+                klass = new(0x24, 0x2C, 0x30, 0x34, 0xC, 0x74, 0xA4, 0x64, 0xA8);
+                field = new(0x4, 0xC, 0x10);
+                vtable = new(0x28);
             }
             else
             {
-                MonoAssembly_Aname = 0x8;
-                MonoAssembly_Image = 0x48;
-                MonoImage_ClassCache = 0x35C;
-                MonoInternalHashtable_table = 0x14;
-                MonoInternalHashtable_size = 0xC;
-                MonoClassDef_NextClassCache = 0xA0;
-                MonoClassDef_Klass = 0x0;
-                MonoClass_Name = 0x2C;
-                MonoClass_Namespace = 0x30;
-                MonoClass_Fields = 0x60;
-                MonoClassDef_FieldCount = 0x9C;
-                MonoClass_Runtime_Info = 0x7C;
-                MonoClass_VTableSize = 0x38;
-                MonoClass_Parent = 0x20;
-                MonoClassField_Name = 0x4;
-                MonoClassField_Offset = 0xC;
-                MonoClassRuntimeInfo_Domain_VTables = 0x4;
-                MonoVTable_VTable = 0x2C;
-                MonoClassFieldAlignment = 0x10;
+                throw new InvalidOperationException();
             }
         }
     }

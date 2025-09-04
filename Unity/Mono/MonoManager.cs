@@ -1,31 +1,13 @@
 ﻿using JHelper.Common.ProcessInterop;
-using JHelper.UnityManagers.Interfaces;
+using JHelper.UnityManagers.Abstractions;
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Linq;
 
 namespace JHelper.UnityManagers.Mono;
 
-/// <summary>
-/// Provides access to Mono memory structures for a hooked Unity process.
-/// Handles version detection, memory offset resolution, and retrieval of assemblies and images.
-/// </summary>
-/// <remarks>
-/// This class reads metadata and runtime information directly from the target process's memory.
-/// It relies on <see cref="MonoOffsets"/> for correct structure layout.
-/// </remarks>
-public partial class Mono : UnityManager<MonoAssembly, MonoClass, MonoImage, MonoField>
+public partial class Mono : UnityManager
 {
-    /// <summary>
-    /// The parent Unity helper instance that owns this manager.
-    /// </summary>
-#if LIVESPLIT
-    internal global::Unity Helper;
-#else
-    internal Unity Helper;
-#endif
-
     /// <summary>
     /// The detected Mono metadata structure version.
     /// </summary>
@@ -81,22 +63,20 @@ public partial class Mono : UnityManager<MonoAssembly, MonoClass, MonoImage, Mon
 #endif
         : this(helper, DetectVersion(helper)) { }
 
-    /// <summary>
-    /// Enumerates all assemblies currently loaded.
-    /// </summary>
-    public override IEnumerable<MonoAssembly> GetAssemblies()
+    public override void LoadAssemblies()
     {
         ProcessMemory process = Helper.Process;
         IntPtr assemblies = Assemblies;
 
-        return process.Is64Bit
-            ? GetAssembliesInternal<long>()
-            : GetAssembliesInternal<int>();
+        if (process.Is64Bit)
+            GetAssembliesInternal<long>();
+        else
+            GetAssembliesInternal<int>();
 
-        IEnumerable<MonoAssembly> GetAssembliesInternal<T>() where T : unmanaged
+        void GetAssembliesInternal<T>() where T : unmanaged
         {
             if (!process.ReadPointer(assemblies, out IntPtr assembly) || assembly == IntPtr.Zero)
-                yield break;
+                return;
 
             T[] buffer = ArrayPool<T>.Shared.Rent(2);
             try
@@ -105,7 +85,16 @@ public partial class Mono : UnityManager<MonoAssembly, MonoClass, MonoImage, Mon
                 {
                     if (!process.ReadArray<T>(assembly, buffer.AsSpan(0, 2)))
                         break;
-                    yield return new MonoAssembly(this, Unsafe.ToIntPtr(buffer[0]));
+                    
+                    MonoAssembly thisAssembly = new MonoAssembly(this, Unsafe.ToIntPtr(buffer[0]));
+                    var image = thisAssembly.GetImage();
+
+                    if (image is not null && !_cachedImages.Any(i => i.Value.Address == image.Address))
+                    {
+                        image.Name = thisAssembly.GetName();
+                        _cachedImages[image.Name] = image;
+                    }
+
                     assembly = Unsafe.ToIntPtr(buffer[1]);
                 }
             }

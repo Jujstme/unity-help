@@ -3,12 +3,12 @@ using System;
 
 namespace JHelper.UnityManagers.IL2CPP;
 
-public readonly struct IL2CPPOffsets
+internal class IL2CPPOffsets
 {
-    internal readonly Assembly assembly;
-    internal readonly Image image;
-    internal readonly Class klass;
-    internal readonly FieldInfo field;
+    internal Assembly assembly { get; }
+    internal Image image { get; }
+    internal Class klass { get; }
+    internal FieldInfo field { get; }
 
     internal readonly struct Assembly(byte image, byte aname)
     {
