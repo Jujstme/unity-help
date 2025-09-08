@@ -15,19 +15,14 @@ public abstract class UnityClass
     /// <summary>
     /// The memory address of this Unity class object in the target process
     /// </summary>
-    public IntPtr Address { get; internal set; }
+    public IntPtr Address { get; protected set; }
 
 #pragma warning disable CS8618
     /// <summary>
     /// The UnityManager that owns this class.
     /// </summary>
-    internal UnityManager Manager;
+    internal UnityManager Manager { get; set; }
 #pragma warning restore CS8618
-
-    /// <summary>
-    /// Cached dictionary of field names and their corresponding memory offsets.
-    /// </summary>
-    internal Dictionary<string, int> _cachedFields = new();
 
     /// <summary>
     /// Gets the name of this Unity class.
@@ -43,11 +38,6 @@ public abstract class UnityClass
             string name = GetName();
             field = name;
             return field;
-        }
-
-        init
-        {
-            field = null;
         }
     }
 
@@ -66,11 +56,6 @@ public abstract class UnityClass
             field = name;
             return field;
         }
-
-        init
-        {
-            field = null;
-        }
     }
 
     /// <summary>
@@ -85,11 +70,6 @@ public abstract class UnityClass
                 return field;
             field = GetParent()!;
             return field;
-        }
-
-        init
-        {
-            field = null;
         }
     }
 
@@ -108,11 +88,6 @@ public abstract class UnityClass
                 ? value
                 : IntPtr.Zero;
             return field;
-        }
-
-        init
-        {
-            field = IntPtr.Zero;
         }
     }
 
@@ -139,7 +114,7 @@ public abstract class UnityClass
     /// <summary>
     /// Forces the class to load and cache its field offsets.
     /// </summary>
-    internal abstract void LoadFields();
+    protected abstract IEnumerable<IUnityField> EnumFields();
 
     /// <summary>
     /// Attempts to get the memory offset of a given field by name.
@@ -149,22 +124,19 @@ public abstract class UnityClass
     /// <returns>The memory offset if found; otherwise null.</returns>
     public int? GetFieldOffset(string fieldName)
     {
-        // Try lookup in cached fields.
-        if (_cachedFields.TryGetValue(fieldName, out var offset))
-            return offset;
-
-        // Handle compiler-generated backing field naming convention.
-        string backingField = $"<{fieldName}>k__BackingField";
-        if (_cachedFields.TryGetValue(backingField, out offset))
-            return offset;
-
-        // Force reload of field definitions.
-        LoadFields();
-
-        // Retry lookup after loading.
-        return _cachedFields.TryGetValue(fieldName, out offset) || _cachedFields.TryGetValue(backingField, out offset)
-            ? offset
-            : null;
+        using (var enumerator = EnumFields()
+            .Where(f => {
+                string name = f.GetName(Manager);
+                return name.EndsWith("k__BackingField")
+                    ? name == "<" + fieldName + ">k__BackingField"
+                    : name == fieldName;
+            })
+            .GetEnumerator())
+        {
+            return enumerator.MoveNext()
+                ? enumerator.Current.GetOffset(Manager)
+                : null;
+        }
     }
 
     /// <summary>
@@ -176,7 +148,7 @@ public abstract class UnityClass
     /// <exception cref="InvalidOperationException">Thrown if the field cannot be found.</exception>
     public int this[string name] => GetFieldOffset(name) is int offset
         ? offset
-        : throw new InvalidOperationException($"Field offset for \"{name}\" not found in {Name}");
+        : throw new InvalidOperationException($"Field offset for \"{name}\" not found in {GetName()}");
 
     /// <summary>
     /// Prints all cached fields of this Unity class to the log.
@@ -184,14 +156,12 @@ public abstract class UnityClass
     /// </summary>
     public void PrintFields()
     {
-        LoadFields();
-
         Log.Info($"  =>  Requested fields for class: {Name}");
-        
+
         if (Static != IntPtr.Zero)
             Log.Info($"      =>  Static table found at address: 0x{Static.ToString("X")}");
 
-        foreach (var c in _cachedFields.OrderBy(p => p.Value))
-            Log.Info($"    =>  0x{c.Value.ToString("X")}: {c.Key}");
+        foreach (var c in EnumFields().OrderBy(p => p.GetOffset(Manager).GetValueOrDefault()))
+            Log.Info($"    =>  0x{c.GetOffset(Manager).GetValueOrDefault().ToString("X")}: {c.GetName(Manager)}");
     }
 }

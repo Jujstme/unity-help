@@ -2,7 +2,7 @@
 using JHelper.Common.ProcessInterop.API;
 using JHelper.UnityManagers.Abstractions;
 using System;
-using System.Linq;
+using System.Collections.Generic;
 
 namespace JHelper.UnityManagers.Mono;
 
@@ -18,7 +18,7 @@ public class MonoClass : UnityClass
 
     protected override string GetNamespace() => Manager.Helper.Process.ReadString(64, StringType.ASCII, Address + ((Mono)Manager).Offsets.klass.namespaze, 0x0);
 
-    internal override void LoadFields()
+    protected override IEnumerable<IUnityField> EnumFields()
     {
         Mono manager = (Mono)Manager;
 
@@ -32,22 +32,17 @@ public class MonoClass : UnityClass
         while (true)
         {
             if (thisClass is null)
-                break;
+                yield break;
 
             if (thisClass.Name == "Object" || thisClass.Namespace == "UnityEngine")
-                break;
+                yield break;
 
             if (process.Read<int>(thisClass.Address + fieldCountOffset, out int fieldCount) && fieldCount > 0)
             {
                 if (process.ReadPointer(thisClass.Address + fieldsOffset, out IntPtr fields) && fields != IntPtr.Zero)
                 {
                     for (int i = 0; i < fieldCount; i++)
-                    {
-                        var fi = new MonoField(manager, fields + i * monoClassFieldAlignment);
-                        if (fi.GetOffset() is not int offset)
-                            continue;
-                        _cachedFields[fi.GetName()] = offset;
-                    }
+                        yield return new MonoField(fields + i * monoClassFieldAlignment);
                 }
             }
 
@@ -60,28 +55,9 @@ public class MonoClass : UnityClass
     {
         Mono manager = (Mono)Manager;
 
-        if (!Manager.Helper.Process.ReadPointer(Address + manager.Offsets.klass.parent, out IntPtr parentAddr))
-            return null;
-
-        if (!Manager.Helper.Process.ReadPointer(parentAddr + manager.Offsets.klass.image, out IntPtr imageAddr))
-            return null;
-
-        UnityImage? parentImage = Manager._cachedImages.Values.FirstOrDefault(i => i.Address == imageAddr);
-        if (parentImage is null)
-        {
-            Manager.LoadAssemblies();
-            parentImage = Manager._cachedImages.Values.FirstOrDefault(i => i.Address == imageAddr);
-        }
-
-        if (parentImage is null)
-            return null;
-
-        if (parentImage.GetClassByAddress(parentAddr) is UnityClass realParent)
-            return realParent;
-
-        realParent = new MonoClass(manager, parentAddr);
-        parentImage._cachedClasses.Add(realParent);
-        return realParent;
+        return manager.Helper.Process.ReadPointer(Address + manager.Offsets.klass.parent, out IntPtr parentAddr) && parentAddr != IntPtr.Zero
+            ? new MonoClass(manager, parentAddr)
+            : null;
     }
 
     public override IntPtr? GetStaticTable()

@@ -3,32 +3,32 @@ using JHelper.Common.ProcessInterop.API;
 using JHelper.UnityManagers.Abstractions;
 using System;
 using System.Buffers;
-using System.Linq;
+using System.Collections.Generic;
 
 namespace JHelper.UnityManagers.Mono;
 
 public readonly record struct MonoAssembly : IUnityAssembly
 {
-    internal readonly IntPtr assembly;
-    private readonly Mono manager;
+    public IntPtr Address { get; }
 
-    internal MonoAssembly(Mono manager, IntPtr address)
+    internal MonoAssembly(IntPtr address)
     {
-        this.manager = manager;
-        assembly = address;
+        Address = address;
     }
 
-    public string GetName()
+    public string GetName(UnityManager manager)
     {
-        return manager.Helper.Process.ReadString(128, StringType.ASCII, assembly + manager.Offsets.assembly.aname, 0);
+        var _manager = (Mono)manager;
+        return _manager.Helper.Process.ReadString(128, StringType.ASCII, Address + _manager.Offsets.assembly.aname, 0);
     }
 
-    public UnityImage? GetImage()
+    public UnityImage? GetImage(UnityManager manager)
     {
-        if (!manager.Helper.Process.ReadPointer(assembly + manager.Offsets.assembly.image, out IntPtr value) || value == IntPtr.Zero)
+        var _manager = (Mono)manager;
+        if (_manager.Helper.Process.ReadPointer(Address + _manager.Offsets.assembly.image, out IntPtr value) || value == IntPtr.Zero)
             return null;
 
-        return new MonoImage(manager, value);
+        return new MonoImage(_manager, value);
     }
 }
 
@@ -40,7 +40,7 @@ public class MonoImage : UnityImage
         Address = address;
     }
 
-    internal override void LoadClasses()
+    internal override IEnumerable<UnityClass> EnumClasses()
     {
         Mono manager = (Mono)Manager;
 
@@ -48,18 +48,17 @@ public class MonoImage : UnityImage
         IntPtr image = Address;
         int nextClassCache = manager.Offsets.klass.nextClassCache;
 
-        if (process.Is64Bit)
-            EnumClassesInternal<long>(manager);
-        else
-            EnumClassesInternal<int>(manager);
+        return process.Is64Bit
+            ? EnumClassesInternal<long>(manager)
+            : EnumClassesInternal<int>(manager);
 
-        void EnumClassesInternal<T>(Mono manager) where T : unmanaged
+        IEnumerable<UnityClass> EnumClassesInternal<T>(Mono manager) where T : unmanaged
         {
             if (!process.Read<int>(image + manager.Offsets.image.classCache + manager.Offsets.hashTable.size, out int classCacheSize) || classCacheSize <= 0)
-                return;
+                yield break;
 
             if (!process.ReadPointer(image + manager.Offsets.image.classCache + manager.Offsets.hashTable.table, out IntPtr tableAddr) || tableAddr == IntPtr.Zero)
-                return;
+                yield break;
 
             T[] buf = ArrayPool<T>.Shared.Rent(classCacheSize);
             try
@@ -78,8 +77,7 @@ public class MonoImage : UnityImage
                             if (klass == IntPtr.Zero)
                                 break;
 
-                            if (!_cachedClasses.Any(k => k.Address == klass))
-                                _cachedClasses.Add(new MonoClass(manager, klass));
+                            yield return new MonoClass(manager, klass);
 
                             if (!process.ReadPointer(table + nextClassCache, out table) || table == IntPtr.Zero)
                                 break;

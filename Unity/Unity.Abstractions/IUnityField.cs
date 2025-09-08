@@ -1,4 +1,6 @@
-﻿namespace JHelper.UnityManagers.Abstractions;
+﻿using System;
+
+namespace JHelper.UnityManagers.Abstractions;
 
 /// <summary>
 /// Represents a field within a Unity class definition.
@@ -13,7 +15,7 @@ public interface IUnityField
     /// <returns>
     /// The field's name as a <see cref="string"/>.
     /// </returns>
-    public string GetName();
+    public string GetName(UnityManager manager);
 
     /// <summary>
     /// Gets the memory offset of the field, if available.
@@ -22,5 +24,5 @@ public interface IUnityField
     /// The field's offset as an <see cref="int"/> if known; 
     /// otherwise <c>null</c>.
     /// </returns>
-    public int? GetOffset();
+    public int? GetOffset(UnityManager manager);
 }

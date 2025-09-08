@@ -2,6 +2,7 @@
 using JHelper.UnityManagers.Abstractions;
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace JHelper.UnityManagers.Mono;
@@ -63,20 +64,19 @@ public partial class Mono : UnityManager
 #endif
         : this(helper, DetectVersion(helper)) { }
 
-    public override void LoadAssemblies()
+    protected override IEnumerable<IUnityAssembly> EnumAssemblies()
     {
         ProcessMemory process = Helper.Process;
         IntPtr assemblies = Assemblies;
 
-        if (process.Is64Bit)
-            GetAssembliesInternal<long>();
-        else
-            GetAssembliesInternal<int>();
+        return process.Is64Bit
+            ? EnumAssembliesInternal<long>()
+            : EnumAssembliesInternal<int>();
 
-        void GetAssembliesInternal<T>() where T : unmanaged
+        IEnumerable<IUnityAssembly> EnumAssembliesInternal<T>() where T : unmanaged
         {
             if (!process.ReadPointer(assemblies, out IntPtr assembly) || assembly == IntPtr.Zero)
-                return;
+                yield break;
 
             T[] buffer = ArrayPool<T>.Shared.Rent(2);
             try
@@ -85,16 +85,7 @@ public partial class Mono : UnityManager
                 {
                     if (!process.ReadArray<T>(assembly, buffer.AsSpan(0, 2)))
                         break;
-                    
-                    MonoAssembly thisAssembly = new MonoAssembly(this, Unsafe.ToIntPtr(buffer[0]));
-                    var image = thisAssembly.GetImage();
-
-                    if (image is not null && !_cachedImages.Any(i => i.Value.Address == image.Address))
-                    {
-                        image.Name = thisAssembly.GetName();
-                        _cachedImages[image.Name] = image;
-                    }
-
+                    yield return new MonoAssembly(Unsafe.ToIntPtr(buffer[0]));
                     assembly = Unsafe.ToIntPtr(buffer[1]);
                 }
             }

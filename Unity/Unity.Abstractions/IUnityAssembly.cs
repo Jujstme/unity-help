@@ -12,7 +12,7 @@ public interface IUnityAssembly
     /// <returns>
     /// The assembly name as a <see cref="string"/>.
     /// </returns>
-    string GetName();
+    string GetName(UnityManager manager);
 
     /// <summary>
     /// Gets the <see cref="UnityImage"/> associated with this assembly.
@@ -20,5 +20,5 @@ public interface IUnityAssembly
     /// <returns>
     /// The <see cref="UnityImage"/> if available; otherwise <c>null</c>.
     /// </returns>
-    UnityImage? GetImage();
+    UnityImage? GetImage(UnityManager manager);
 }

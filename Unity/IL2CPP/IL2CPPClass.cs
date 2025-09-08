@@ -2,7 +2,7 @@
 using JHelper.Common.ProcessInterop.API;
 using JHelper.UnityManagers.Abstractions;
 using System;
-using System.Linq;
+using System.Collections.Generic;
 
 namespace JHelper.UnityManagers.IL2CPP;
 
@@ -14,7 +14,7 @@ public class IL2CPPClass : UnityClass
         Address = address;
     }
 
-    internal override void LoadFields()
+    protected override IEnumerable<IUnityField> EnumFields()
     {
         IL2CPP manager = (IL2CPP)Manager;
 
@@ -37,13 +37,7 @@ public class IL2CPPClass : UnityClass
                 if (process.ReadPointer(thisClass.Address + fieldsOffset, out IntPtr fields) && fields != IntPtr.Zero)
                 {
                     for (int i = 0; i < fieldCount; i++)
-                    {
-                        var fi = new IL2CPPField(manager, fields + i * manager.Offsets.field.structSize);
-                        if (fi.GetOffset() is not int offset)
-                            continue;
-                        string name = fi.GetName();
-                        _cachedFields[name] = offset;
-                    }
+                        yield return new IL2CPPField(fields + i * manager.Offsets.field.structSize);
                 }
             }
 
@@ -57,29 +51,12 @@ public class IL2CPPClass : UnityClass
     protected override string GetNamespace() => Manager.Helper.Process.ReadString(64, StringType.ASCII, Address + ((IL2CPP)Manager).Offsets.klass.namespaze, 0);
 
     public override UnityClass? GetParent()
-    {        
-        if (!Manager.Helper.Process.ReadPointer(Address + ((IL2CPP)Manager).Offsets.klass.parent, out IntPtr parent) || parent == IntPtr.Zero)
-            return null;
+    {
+        var manager = (IL2CPP)this.Manager;
 
-        if (!Manager.Helper.Process.ReadPointer(parent, out IntPtr imageAddr) || imageAddr == IntPtr.Zero)
-            return null;
-
-        UnityImage? parentImage = Manager._cachedImages.Values.FirstOrDefault(i => i.Address == imageAddr);
-        if (parentImage is null)
-        {
-            Manager.LoadAssemblies();
-            parentImage = Manager._cachedImages.Values.FirstOrDefault(i => i.Address == imageAddr);
-        }
-
-        if (parentImage is null)
-            return null;
-
-        if (parentImage.GetClassByAddress(parent) is UnityClass realParent)
-            return realParent;
-
-        realParent = new IL2CPPClass((IL2CPP)Manager, parent);
-        parentImage._cachedClasses.Add(realParent);
-        return realParent;
+        return manager.Helper.Process.ReadPointer(Address + manager.Offsets.klass.parent, out IntPtr parent) && parent != IntPtr.Zero
+            ? new IL2CPPClass(manager, parent)
+            : null;
     }
 
     public override IntPtr? GetStaticTable() => Manager.Helper.Process.ReadPointer(Address + ((IL2CPP)Manager).Offsets.klass.staticFields, out IntPtr value)

@@ -24,9 +24,7 @@ public partial class Mono
             if (module.GetDefaultImage() is not MonoImage image)
                 throw new InvalidOperationException("Unable to identify the version of the Mono struct used by the game");
 
-            image.LoadClasses();
-
-            if (image._cachedClasses.First() is not MonoClass @class)
+            if (image.EnumClasses().FirstOrDefault() is not MonoClass @class)
                 throw new InvalidOperationException("Unable to identify the version of the Mono struct used by the game");
 
             if (!helper.Process.ReadPointer(@class.Address + module.Offsets.klass.name, out IntPtr ptr))

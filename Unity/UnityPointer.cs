@@ -1,5 +1,7 @@
 ﻿using JHelper.Logging;
 using JHelper.UnityManagers.Abstractions;
+using JHelper.UnityManagers.IL2CPP;
+using JHelper.UnityManagers.Mono;
 using System;
 
 namespace JHelper;
@@ -143,27 +145,20 @@ public class UnityPointer
                 else
                 {
                     IntPtr ptr;
-                    if (manager is UnityManagers.IL2CPP.IL2CPP _)
+                    if (manager is UnityManagers.IL2CPP.IL2CPP imanager)
                     {
-                        if (!manager.Helper.Process.ReadPointer(currentObject, out ptr))
+                        if (!manager.Helper.Process.ReadPointer(currentObject, out ptr) || ptr == IntPtr.Zero)
                             return false;
+                        currentClass = new IL2CPPClass(imanager, ptr);
                     }
-                    else if (manager is UnityManagers.Mono.Mono _)
+                    else if (manager is UnityManagers.Mono.Mono mmanager)
                     {
                         if (!manager.Helper.Process.DerefOffsets(currentObject, out ptr, 0, 0) || ptr == IntPtr.Zero)
                             return false;
+                        currentClass = new MonoClass(mmanager, ptr);
                     }
                     else
                         throw new InvalidOperationException();
-
-                    /*
-                    currentClass = manager._cachedImages
-                        .SelectMany(assembly => assembly.Value._cachedClasses)
-                        .FirstOrDefault(klass => klass.Address == ptr);
-                    */
-
-                    // Resolve class from pointer.
-                    currentClass = image.GetClassByAddress(ptr);
 
                     if (currentClass is null)
                         return false;
@@ -178,9 +173,12 @@ public class UnityPointer
             offsets[i] = currentOffset;
             resolvedOffsets++;
 
-            // Advance pointer using resolved offset.
-            if (!manager.Helper.Process.ReadPointer(currentObject + currentOffset, out currentObject))
-                return false;
+            if (resolvedOffsets != offsets.Length)
+            {
+                // Advance pointer using resolved offset.
+                if (!manager.Helper.Process.ReadPointer(currentObject + currentOffset, out currentObject))
+                    return false;
+            }
         }
 
         return true;

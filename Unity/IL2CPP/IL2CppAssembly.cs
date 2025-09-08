@@ -3,31 +3,31 @@ using JHelper.Common.ProcessInterop.API;
 using JHelper.UnityManagers.Abstractions;
 using System;
 using System.Buffers;
-using System.Linq;
+using System.Collections.Generic;
 
 namespace JHelper.UnityManagers.IL2CPP;
 
-public readonly record struct IL2CPPAssembly : IUnityAssembly
+public readonly struct IL2CPPAssembly : IUnityAssembly
 {
-    internal readonly IntPtr assembly;
-    private readonly IL2CPP manager;
+    public IntPtr Address { get; }
 
-    internal IL2CPPAssembly(IL2CPP manager, IntPtr address)
+    internal IL2CPPAssembly(IntPtr address)
     {
-        this.manager = manager;
-        this.assembly = address;
+        Address = address;
     }
 
-    public UnityImage? GetImage()
+    public UnityImage? GetImage(UnityManager manager)
     {
-        return manager.Helper.Process.ReadPointer(assembly + manager.Offsets.assembly.image, out IntPtr value) && value != IntPtr.Zero
-            ? new IL2CPPImage(manager, value)
+        var _manager = (IL2CPP)manager;
+        return _manager.Helper.Process.ReadPointer(Address + _manager.Offsets.assembly.image, out IntPtr value) && value != IntPtr.Zero
+            ? new IL2CPPImage(_manager, value)
             : null;
     }
 
-    public string GetName()
+    public string GetName(UnityManager manager)
     {
-        return manager.Helper.Process.ReadString(128, StringType.ASCII, assembly + manager.Offsets.assembly.aname, 0);
+        var _manager = (IL2CPP)manager;
+        return _manager.Helper.Process.ReadString(128, StringType.ASCII, Address + _manager.Offsets.assembly.aname, 0);
     }
 }
 
@@ -39,34 +39,33 @@ public class IL2CPPImage : UnityImage
         Address = address;
     }
 
-    internal override void LoadClasses()
+    internal override IEnumerable<UnityClass> EnumClasses()
     {
         ProcessMemory process = Manager.Helper.Process;
         IntPtr image = Address;
 
-        if (process.Is64Bit)
-            LoadClassesInternal<long>((IL2CPP)Manager);
-        else
-            LoadClassesInternal<int>((IL2CPP)Manager);
+        return process.Is64Bit
+            ? EnumClassesInternal<long>((IL2CPP)Manager)
+            : EnumClassesInternal<int>((IL2CPP)Manager);
 
-        void LoadClassesInternal<T>(IL2CPP manager) where T : unmanaged
+        IEnumerable<UnityClass> EnumClassesInternal<T>(IL2CPP manager) where T : unmanaged
         {
             int typeCount = process.Read<int>(image + manager.Offsets.image.typeCount);
             if (typeCount == 0)
-                return;
+                yield break;
 
             IntPtr metadataPtr = manager.Version != IL2CPPVersion.Base && manager.Version != IL2CPPVersion.V2019
                 ? process.ReadPointer(image + manager.Offsets.image.metadataHandle)
                 : image + manager.Offsets.image.metadataHandle;
 
             if (metadataPtr == IntPtr.Zero)
-                return;
+                yield break;
 
             if (!process.Read<int>(metadataPtr, out int metadataHandle) || metadataHandle == 0)
-                return;
+                yield break;
 
             if (!process.ReadPointer(manager.TypeInfoDefinitionTable, out IntPtr typeInfoTablePtr) || typeInfoTablePtr == IntPtr.Zero)
-                return;
+                yield break;
 
             IntPtr ptr = typeInfoTablePtr + metadataHandle * process.PointerSize;
 
@@ -79,12 +78,7 @@ public class IL2CPPImage : UnityImage
                     {
                         IntPtr klass = Unsafe.ToIntPtr(buffer[i]);
                         if (klass != IntPtr.Zero)
-                        {
-                            if (_cachedClasses.Any(k => k.Address == klass))
-                                continue;
-                            
-                            _cachedClasses.Add(new IL2CPPClass(manager, klass));
-                        }
+                            yield return new IL2CPPClass(manager, klass);
                     }
                 }
             }

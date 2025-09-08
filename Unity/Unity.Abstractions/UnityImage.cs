@@ -15,29 +15,19 @@ public abstract class UnityImage
     /// <summary>
     /// The memory address of this Unity image in the target process.
     /// </summary>
-    public IntPtr Address { get; internal set; }
+    public IntPtr Address { get; protected set; }
 
 #pragma warning disable CS8618
     /// <summary>
-    /// The name of this Unity image (e.g., "Assembly-CSharp").
-    /// </summary>
-    public string Name { get; internal set; }
-
-    /// <summary>
     /// The Unity manager instance that owns this class.
     /// </summary>
-    internal UnityManager Manager;
+    internal UnityManager Manager { get; set; }
 #pragma warning restore CS8618
-
-    /// <summary>
-    /// Cached list of classes contained within this image.
-    /// </summary>
-    internal List<UnityClass> _cachedClasses = new();
 
     /// <summary>
     /// Forces the image to load and cache its contained classes.
     /// </summary>
-    internal abstract void LoadClasses();
+    internal abstract IEnumerable<UnityClass> EnumClasses();
 
     /// <summary>
     /// Attempts to find a <see cref="UnityClass"/> by its class name.
@@ -52,57 +42,34 @@ public abstract class UnityImage
 
         if (index == -1) // No namespace specified
         {
-            if (_cachedClasses.FirstOrDefault(c => c.Name == fullName) is UnityClass klass)
-                return klass;
-            LoadClasses();
-            return _cachedClasses.FirstOrDefault(c => c.Name == fullName) is UnityClass kklass
-                ? kklass
-                : null;
+            using (var enumerator = EnumClasses().Where(c => c.Name == fullName).GetEnumerator())
+            {
+                return enumerator.MoveNext()
+                    ? enumerator.Current
+                    : null;
+            }
         }
         else if (index == 0) // Root Namespace
         {
             string className = fullName.Substring(1);
-            if (_cachedClasses.FirstOrDefault(c => c.Name == className && string.IsNullOrEmpty(c.Namespace)) is UnityClass klass)
-                return klass;
-            LoadClasses();
-            return _cachedClasses.FirstOrDefault(c => c.Name == className && string.IsNullOrEmpty(c.Namespace)) is UnityClass kklass
-                ? kklass
-                : null;
+            using (var enumerator = EnumClasses().Where(c => c.Name == className && string.IsNullOrEmpty(c.Namespace)).GetEnumerator())
+            {
+                return enumerator.MoveNext()
+                    ? enumerator.Current
+                    : null;
+            }
         }
         else
         {
             string namespaze = fullName.Substring(0, index);
             string className = fullName.Substring(index + 1);
-
-            if (_cachedClasses.FirstOrDefault(c => c.Name == className && c.Namespace == namespaze) is UnityClass klass)
-                return klass;
-            LoadClasses();
-            return _cachedClasses.FirstOrDefault(c => c.Name == className && c.Namespace == namespaze) is UnityClass kklass
-                ? kklass
-                : null;
+            using (var enumerator = EnumClasses().Where(c => c.Name == className && c.Namespace == namespaze).GetEnumerator())
+            {
+                return enumerator.MoveNext()
+                    ? enumerator.Current
+                    : null;
+            }
         }
-    }
-
-    /// <summary>
-    /// Attempts to find a <see cref="UnityClass"/> by its memory address.
-    /// </summary>
-    /// <param name="address">The memory address of the class.</param>
-    /// <returns>
-    /// The <see cref="UnityClass"/> if found; otherwise <c>null</c>.
-    /// </returns>
-    internal UnityClass? GetClassByAddress(IntPtr address)
-    {
-        // First check cached classes.
-        if (_cachedClasses.FirstOrDefault(c => c.Address == address) is UnityClass klass)
-            return klass;
-
-        // Force reload of all classes if not found.
-        LoadClasses();
-
-        // Retry lookup after loading.
-        return _cachedClasses.FirstOrDefault(c => c.Address == address) is UnityClass kklass
-            ? kklass
-            : null;
     }
 
     /// <summary>
@@ -122,14 +89,16 @@ public abstract class UnityImage
     /// </summary>
     public void PrintClasses()
     {
-        Log.Info($"  => Current Assembly: {Name}");
-        LoadClasses();
-        foreach (var c in _cachedClasses.OrderBy(c => c.Name))
+        Log.Info($"  => Requested classes for the current Unity Image:");
+        foreach (var c in EnumClasses().OrderBy(c => c.Name))
         {
-            if (string.IsNullOrEmpty(c.Namespace))
-                Log.Info($"    => {c.Name}: 0x{c.Address.ToString("X")}");
+            var name = c.Name;
+            var namespaze = c.Name;
+
+            if (string.IsNullOrEmpty(namespaze))
+                Log.Info($"    => {name}: 0x{c.Address.ToString("X")}");
             else
-                Log.Info($"    => {c.Namespace}.{c.Name}: 0x{c.Address.ToString("X")}");
+                Log.Info($"    => {namespaze}.{name}: 0x{c.Address.ToString("X")}");
         }
     }
 }

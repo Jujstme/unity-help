@@ -85,16 +85,15 @@ public partial class IL2CPP : UnityManager
             throw new Exception("Failed while trying to resolve IL2CPP assemblies (TypeInfoDefinitionTable).");
     }
 
-    public override void LoadAssemblies()
+    protected override IEnumerable<IUnityAssembly> EnumAssemblies()
     {
         ProcessMemory process = Helper.Process;
 
-        if (process.Is64Bit)
-            GetAssembliesInternal<long>();
-        else
-            GetAssembliesInternal<int>();
+        return process.Is64Bit
+            ? EnumAssembliesInternal<long>()
+            : EnumAssembliesInternal<int>();
 
-        void GetAssembliesInternal<T>() where T : unmanaged
+        IEnumerable<IUnityAssembly> EnumAssembliesInternal<T>() where T : unmanaged
         {
             int count = 0;
             IntPtr assemblies = IntPtr.Zero;
@@ -103,7 +102,7 @@ public partial class IL2CPP : UnityManager
             {
                 Span<T> buf = buffer.Span;
                 if (!process.ReadArray<T>(Assemblies, buf))
-                    return;
+                    yield break;
                  
                 assemblies = Unsafe.ToIntPtr(buf[0]);
                 count = (int)(((nint)Unsafe.ToIntPtr(buf[1]) - assemblies) / process.PointerSize);
@@ -111,27 +110,19 @@ public partial class IL2CPP : UnityManager
             }
 
             if (count == 0 || assemblies == IntPtr.Zero)
-                return;
+                yield break;
 
             T[] addresses = ArrayPool<T>.Shared.Rent(count);
             try
             {
                 if (!process.ReadArray(assemblies, addresses.AsSpan(0, count)))
-                    return;
+                    yield break;
 
                 for (int i = 0; i < count; i++)
                 {
                     IntPtr assembly = Unsafe.ToIntPtr(addresses[i]);
                     if (assembly != IntPtr.Zero)
-                    {
-                        var newAssembly = new IL2CPPAssembly(this, assembly);
-                        var image = newAssembly.GetImage();
-
-                        if (image is null || _cachedImages.Any(i => i.Value.Address == image.Address))
-                            continue;
-                        image.Name = newAssembly.GetName();
-                        _cachedImages[image.Name] = image;
-                    }
+                        yield return new IL2CPPAssembly(assembly);
                 }
             }
             finally

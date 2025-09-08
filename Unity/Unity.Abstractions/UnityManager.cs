@@ -19,22 +19,17 @@ public abstract class UnityManager
     /// </summary>
 #pragma warning disable CS8618
 #if LIVESPLIT
-    internal global::Unity Helper;
+    internal global::Unity Helper { get; set; }
 #else
-    internal Unity Helper;
+    internal Unity Helper { get; set; }
 #endif
 #pragma warning restore CS8618
-
-    /// <summary>
-    /// A local cache of Unity assembly images
-    /// </summary>
-    internal Dictionary<string, UnityImage> _cachedImages = new();
 
     /// <summary>
     /// Forces the implementing manager to load and cache all Unity assemblies.
     /// Must be implemented in derived classes (e.g., IL2CPP or Mono).
     /// </summary>
-    public abstract void LoadAssemblies();
+    protected abstract IEnumerable<IUnityAssembly> EnumAssemblies();
 
     /// <summary>
     /// Attempts to retrieve a Unity image by its assembly name.
@@ -46,15 +41,12 @@ public abstract class UnityManager
     /// </returns>
     public UnityImage? GetImage(string assemblyName)
     {
-        if (_cachedImages.TryGetValue(assemblyName, out var image))
-            return image;
-
-        LoadAssemblies();
-
-        if (_cachedImages.TryGetValue(assemblyName, out image))
-            return image;
-        
-        return null;
+        using (IEnumerator<IUnityAssembly> enumerator = EnumAssemblies().Where(a => a.GetName(this) == assemblyName).GetEnumerator())
+        {
+            return enumerator.MoveNext()
+                ? enumerator.Current.GetImage(this)
+                : null;
+        }
     }
 
     /// <summary>
@@ -83,8 +75,7 @@ public abstract class UnityManager
     public void PrintAssemblies()
     {
         Log.Info("  => Currently identified assemblies:");
-        LoadAssemblies();
-        foreach (var c in _cachedImages.OrderBy(i => i.Key))
-            Log.Info($"    => {c.Key}");
+        foreach (var c in EnumAssemblies().OrderBy(i => i.GetName(this)))
+            Log.Info($"    => {c.GetName(this)}");
     }
 }
