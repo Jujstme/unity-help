@@ -61,7 +61,7 @@ public class IL2CPPImage : UnityImage
             if (metadataPtr == IntPtr.Zero)
                 yield break;
 
-            if (!process.Read<int>(metadataPtr, out int metadataHandle) || metadataHandle == 0)
+            if (!process.Read<int>(metadataPtr, out int metadataHandle))
                 yield break;
 
             if (!process.ReadPointer(manager.TypeInfoDefinitionTable, out IntPtr typeInfoTablePtr) || typeInfoTablePtr == IntPtr.Zero)
